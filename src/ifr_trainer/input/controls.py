@@ -23,8 +23,6 @@ class JoystickMapping:
     roll_invert: bool = False
     throttle_axis: int = 2
     throttle_invert: bool = True
-    rudder_axis: int = -1
-    rudder_invert: bool = False
     deadzone: float = 0.05
     expo: float = 0.3
     buttons: dict[str, int] = field(default_factory=dict)
@@ -61,7 +59,6 @@ class Controls:
         self._throttle_ref = 0.0
         self._key_pitch = 0.0
         self._key_roll = 0.0
-        self._key_rudder = 0.0
         self._mouse_anchor: tuple[int, int] | None = None
         self.open_joystick()
 
@@ -110,7 +107,15 @@ class Controls:
                 return "reset"
             if key == pygame.K_f:
                 return self._action("flaps_up" if mods & pygame.KMOD_SHIFT else "flaps_down")
-            simple = {pygame.K_g: "gear", pygame.K_b: "speedbrake", pygame.K_p: "pause", pygame.K_h: "help"}
+            simple = {
+                pygame.K_g: "gear",
+                pygame.K_b: "speedbrake",
+                pygame.K_p: "pause",
+                pygame.K_h: "help",
+                pygame.K_m: "nd_mode",
+                pygame.K_n: "nd_range",
+                pygame.K_l: "ls",
+            }
             if key in simple:
                 return self._action(simple[key])
             names = {pygame.K_1: "IDLE", pygame.K_2: "CL", pygame.K_3: "MCT", pygame.K_4: "TOGA"}
@@ -162,7 +167,6 @@ class Controls:
         limit = 1.0 if pygame.key.get_mods() & pygame.KMOD_SHIFT else self.KEY_STICK_LIMIT
         self._key_pitch = self._key_axis(self._key_pitch, keys[pygame.K_UP], keys[pygame.K_DOWN], limit, dt)
         self._key_roll = self._key_axis(self._key_roll, keys[pygame.K_LEFT], keys[pygame.K_RIGHT], limit, dt)
-        self._key_rudder = self._key_axis(self._key_rudder, keys[pygame.K_z], keys[pygame.K_x], limit, dt)
         mouse_pitch = mouse_roll = 0.0
         if self._mouse_anchor is not None:
             # Spring-loaded like a sidestick: deflection follows the drag, centres on release.
@@ -172,14 +176,6 @@ class Controls:
         i = self.inputs
         i.stick_pitch = max(-1.0, min(1.0, self._axis(m.pitch_axis, m.pitch_invert) + self._key_pitch + mouse_pitch))
         i.stick_roll = max(-1.0, min(1.0, self._axis(m.roll_axis, m.roll_invert) + self._key_roll + mouse_roll))
-        i.rudder = max(-1.0, min(1.0, self._axis(m.rudder_axis, m.rudder_invert) + self._key_rudder))
-        brake_button = m.buttons.get("brakes", -1)
-        joystick_brakes = (
-            self.joystick is not None
-            and 0 <= brake_button < self.joystick.get_numbuttons()
-            and self.joystick.get_button(brake_button)
-        )
-        i.brakes = 1.0 if (keys[pygame.K_SPACE] or joystick_brakes) else 0.0
 
         if keys[pygame.K_w] or keys[pygame.K_s]:
             delta = (self.KEY_LEVER_RATE if keys[pygame.K_w] else -self.KEY_LEVER_RATE) * dt

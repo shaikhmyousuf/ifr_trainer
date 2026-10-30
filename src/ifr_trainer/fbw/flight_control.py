@@ -1,11 +1,10 @@
-"""Flight control computer: normal law in flight, direct law on the ground.
+"""Flight control computer: Airbus-style normal law.
 
-The normal law's commands (load factor, roll rate, sideslip) become surface
-deflections through dynamic inversion: the computer uses the aircraft's own aero
-model to find the deflection that produces the wanted angular acceleration.
-The THS trims automatically so the elevator returns to neutral, as on the Airbus.
-After liftoff the pitch law blends from direct to normal over 5 seconds, and back
-after touchdown.
+The normal law's commands (load factor, roll rate) become surface deflections
+through dynamic inversion: the computer uses the aircraft's own aero model to find
+the deflection that produces the wanted angular acceleration. The rudder is not
+flown by the pilot; it coordinates turns (zero sideslip) automatically. The THS
+trims automatically so the elevator returns to neutral.
 """
 
 import math
@@ -18,7 +17,7 @@ from ..sim.units import G
 from .normal_law import NormalLawLimits, pitch_law, roll_law
 
 DEG = math.pi / 180.0
-MIN_DYNAMIC_PRESSURE = 200.0  # Pa; below this the normal law is not computed
+MIN_DYNAMIC_PRESSURE = 200.0  # Pa; below this the law holds the surfaces still
 
 
 def _toward(value: float, target: float, max_step: float) -> float:
@@ -33,25 +32,12 @@ class FlightControlComputer:
     K_BETA = 1.0  # 1/s: sideslip error -> yaw rate demand
     K_R = 2.5  # 1/s: yaw rate error -> yaw acceleration demand
     TRIM_GAIN = 0.5  # THS rate per unit of elevator deflection, 1/s
-    MAX_PEDAL_BETA = 15.0 * DEG
-    PITCH_BLEND_S = 5.0
-    LATERAL_BLEND_S = 1.0
     ALPHA_PROT_MARGIN = 1.5 * DEG  # basic high angle-of-attack limit below the stall (full protection: M3)
 
     def __init__(self, aircraft: AircraftData, aero: AeroModel, limits: NormalLawLimits):
         self.ac = aircraft
         self.aero = aero
         self.limits = limits
-        self.reset(airborne=True)
-
-    def reset(self, airborne: bool) -> None:
-        self.pitch_blend = self.lateral_blend = 1.0 if airborne else 0.0
-
-    @property
-    def law(self) -> str:
-        if self.pitch_blend >= 1.0:
-            return "NORMAL"
-        return "GROUND" if self.pitch_blend <= 0.0 else "BLEND"
 
     def update(
         self,
@@ -65,42 +51,27 @@ class FlightControlComputer:
         cas_kt: float,
         flaps_extended: bool,
     ) -> None:
-        """Move ``surfaces`` (elevator, aileron, rudder, THS, nosewheel) for this step."""
+        """Move ``surfaces`` (elevator, aileron, rudder, THS) for this step."""
+        if s.dynamic_pressure < MIN_DYNAMIC_PRESSURE:
+            return
         lim = self.ac.controls
-        target = 0.0 if s.on_ground else 1.0
-        self.pitch_blend = _toward(self.pitch_blend, target, dt / self.PITCH_BLEND_S)
-        self.lateral_blend = _toward(self.lateral_blend, target, dt / self.LATERAL_BLEND_S)
-
-        rudder_limit = lim.rudder_limit_deg(cas_kt) * DEG
+        elevator, aileron, rudder = self._normal_law(inputs, s, surfaces, cfg, mass, thrust, flaps_extended)
         up, down = lim.elevator_up_deg * DEG, lim.elevator_down_deg * DEG
-        elevator = inputs.stick_pitch * (up if inputs.stick_pitch > 0 else down)
-        aileron = inputs.stick_roll * lim.aileron_deg * DEG
-        rudder = inputs.rudder * rudder_limit
-        if s.dynamic_pressure > MIN_DYNAMIC_PRESSURE and (self.pitch_blend > 0.0 or self.lateral_blend > 0.0):
-            e_n, a_n, r_n = self._normal_law(inputs, s, surfaces, cfg, mass, thrust, flaps_extended)
-            elevator += (e_n - elevator) * self.pitch_blend
-            aileron += (a_n - aileron) * self.lateral_blend
-            rudder += (r_n - rudder) * self.lateral_blend
-
-        surfaces.elevator = _toward(
-            surfaces.elevator, max(-down, min(up, elevator)), lim.elevator_rate_deg_s * DEG * dt
-        )
         aileron_max = lim.aileron_deg * DEG
+        rudder_max = lim.rudder_limit_deg(cas_kt) * DEG
+        surfaces.elevator = _toward(surfaces.elevator, max(-down, min(up, elevator)), lim.elevator_rate_deg_s * DEG * dt)
         surfaces.aileron = _toward(
             surfaces.aileron, max(-aileron_max, min(aileron_max, aileron)), lim.aileron_rate_deg_s * DEG * dt
         )
         surfaces.rudder = _toward(
-            surfaces.rudder, max(-rudder_limit, min(rudder_limit, rudder)), lim.rudder_rate_deg_s * DEG * dt
+            surfaces.rudder, max(-rudder_max, min(rudder_max, rudder)), lim.rudder_rate_deg_s * DEG * dt
         )
 
-        # Auto-trim: the THS offloads the elevator, frozen on the ground and beyond 33 degrees of bank.
-        if self.pitch_blend >= 1.0 and abs(s.phi) < self.limits.neutral_bank:
+        # Auto-trim: the THS offloads the elevator, frozen beyond 33 degrees of bank.
+        if abs(s.phi) < self.limits.neutral_bank:
             rate = lim.ths_rate_deg_s * DEG
             ths_rate = max(-rate, min(rate, self.TRIM_GAIN * surfaces.elevator))
             surfaces.ths = max(-lim.ths_down_deg * DEG, min(lim.ths_up_deg * DEG, surfaces.ths + ths_rate * dt))
-
-        fade = max(0.0, 1.0 - cas_kt / lim.nosewheel_fade_kt)
-        surfaces.nosewheel = inputs.rudder * lim.nosewheel_pedal_deg * DEG * fade
 
     def _normal_law(
         self,
@@ -135,13 +106,12 @@ class FlightControlComputer:
         p_cmd = phi_dot_cmd - (q * sin_phi + r * cos_phi) * math.tan(s.theta)
         l_req = inertia.ixx * self.K_P * (p_cmd - p) - (inertia.iyy - inertia.izz) * q * r
 
-        # Yaw: pedals command sideslip; otherwise coordinate the turn (zero sideslip).
-        beta_cmd = -inputs.rudder * self.MAX_PEDAL_BETA
-        r_cmd = G * sin_phi * math.cos(s.theta) / v + self.K_BETA * (s.beta - beta_cmd)
+        # Yaw: coordinate the turn (zero sideslip).
+        r_cmd = G * sin_phi * math.cos(s.theta) / v + self.K_BETA * s.beta
         n_req = inertia.izz * self.K_R * (r_cmd - r) - (inertia.ixx - inertia.iyy) * p * q
 
         neutral = replace(surfaces, elevator=0.0, aileron=0.0, rudder=0.0)
-        base = self.aero.coefficients(cfg, s.alpha, s.beta, s.alpha_dot, p, q, r, s.tas, s.mach, neutral, s.height_m)
+        base = self.aero.coefficients(cfg, s.alpha, s.beta, s.alpha_dot, p, q, r, s.tas, s.mach, neutral)
         elevator = ((m_req - ac.engines.z_m * thrust) / (qs * ac.mac_m) - base.pitch) / d.cm_elevator
         # Aileron and rudder both affect roll and yaw: solve the 2x2 system.
         cl_req = l_req / (qs * ac.span_m) - base.roll

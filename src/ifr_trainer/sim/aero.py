@@ -18,15 +18,13 @@ class AeroConfig:
 
 @dataclass
 class Surfaces:
-    """Control surface positions in radians (pilot sense) and spoiler extension 0..1."""
+    """Control surface positions in radians (pilot sense) and speedbrake extension 0..1."""
 
     elevator: float = 0.0
     aileron: float = 0.0
     rudder: float = 0.0
     ths: float = 0.0
-    nosewheel: float = 0.0
     speedbrake: float = 0.0
-    ground_spoiler: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -67,36 +65,29 @@ class AeroModel:
         tas: float,
         mach: float,
         s: Surfaces,
-        height_m: float = 1000.0,
     ) -> Coefficients:
-        """``height_m`` is the wing's height above the ground, for ground effect."""
         ac, a = self.ac, self.ac.aero
         v2 = 2.0 * max(tas, 1.0)
         p_hat, r_hat = p * ac.span_m / v2, r * ac.span_m / v2
         q_hat, ad_hat = q * ac.mac_m / v2, alpha_dot * ac.mac_m / v2
 
-        # Ground effect (Wieselsberger): less induced drag and a little more lift within a span of the ground.
-        h = (16.0 * max(height_m, 0.1) / ac.span_m) ** 2
-        ground_effect = h / (1.0 + h)
-        cl_wing = self.wing_lift(cfg, alpha) * (1.0 + 0.1 * (1.0 - ground_effect))
+        cl_wing = self.wing_lift(cfg, alpha)
         cl = (
             cl_wing
             + a.cl_q * q_hat
             + a.cl_elevator * s.elevator
             + a.cl_ths * s.ths
             + a.speedbrake_cl * s.speedbrake
-            + a.ground_spoiler_cl * s.ground_spoiler
         )
         alpha_stall = self.alpha_stall(cfg)
         wave = 20.0 * (mach - ac.mach_crit) ** 4 if mach > ac.mach_crit else 0.0
         separated = 1.2 * math.sin(alpha - alpha_stall) ** 2 if alpha > alpha_stall else 0.0
         cd = (
             cfg.cd0
-            + ac.induced_drag_k * ground_effect * cl_wing * cl_wing
+            + ac.induced_drag_k * cl_wing * cl_wing
             + wave
             + separated
             + a.cd_beta * beta * beta
-            + a.ground_spoiler_cd * s.ground_spoiler
         )
         cy = a.cy_beta * beta + a.cy_rudder * s.rudder
         roll = a.roll_beta * beta + a.roll_p * p_hat + a.roll_r * r_hat + a.roll_aileron * s.aileron + a.roll_rudder * s.rudder

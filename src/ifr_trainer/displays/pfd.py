@@ -1,9 +1,10 @@
-"""Primary flight display, A320 style: attitude, speed and altitude tapes, VSI, heading, FMA."""
+"""Primary flight display, A320 style: attitude, speed and altitude tapes, VSI, heading, FMA, ILS scales."""
 
 import math
 
 import pygame
 
+from ..nav.receivers import NavReadings
 from ..sim.simulation import Simulation
 from ..sim.units import wrap_180
 from .common import (
@@ -13,6 +14,7 @@ from .common import (
     GREEN,
     GREY,
     GROUND,
+    MAGENTA,
     RED,
     SKY,
     TAPE,
@@ -39,6 +41,11 @@ BANK_RADIUS = 145
 STICK_BOX = pygame.Rect(176, 372, 44, 44)
 SLIP_PX_PER_G = 150.0
 SLIP_MAX_PX = 30.0
+LS_DOT_PX = 30
+LOC_SCALE_Y = 445
+GS_SCALE_X = 447
+LS_MAX_DOTS = 2.2
+MINIMUM_CALLOUT_S = 4.0
 
 
 def vsi_fraction(vs_fpm: float) -> float:
@@ -58,22 +65,55 @@ class PFD:
         self.text = text
         self.surface = pygame.Surface(SIZE)
 
-    def draw(self, sim: Simulation) -> pygame.Surface:
+    def draw(self, sim: Simulation, nav: NavReadings) -> pygame.Surface:
         s = self.surface
         s.fill(BLACK)
         st = sim.state
+        c = sim.cockpit
         self._attitude(s, math.degrees(st.theta), st.phi, st.ny)
         self._speed_tape(s, sim)
         self._altitude_tape(s, sim)
         self._vsi(s, sim.vs_fpm)
-        self._heading(s, sim.heading_deg, sim.track_deg)
+        self._heading(s, sim.heading_deg, sim.track_deg, c.hdg_bug, c.ils_crs if c.ls else None)
         self._fma(s, sim)
         self._stick_indicator(s, sim.inputs.stick_pitch, sim.inputs.stick_roll)
+        if c.ls:
+            self._ils(s, sim, nav)
         agl = sim.agl_ft
         if agl < 2500:
             step = 10 if agl > 50 else (5 if agl > 10 else 1)
             self.text.blit(s, f"{round(agl / step) * step:.0f}", 24, GREEN, (CX, 412))
+        reached = sim.minimum_reached_time
+        if reached is not None and sim.time_s - reached < MINIMUM_CALLOUT_S:
+            self.text.blit(s, "MINIMUM", 28, AMBER, (CX, 160))
         return s
+
+    # --- ILS (LS pushbutton) -----------------------------------------------------------
+
+    def _ils(self, s: pygame.Surface, sim: Simulation, nav: NavReadings) -> None:
+        ils = nav.ils
+        for d in (-2, -1, 1, 2):
+            pygame.draw.circle(s, WHITE, (CX + d * LS_DOT_PX, LOC_SCALE_Y), 4, 2)
+            pygame.draw.circle(s, WHITE, (GS_SCALE_X, CY + d * LS_DOT_PX), 4, 2)
+        pygame.draw.line(s, YELLOW, (CX, LOC_SCALE_Y - 9), (CX, LOC_SCALE_Y + 9), 3)
+        pygame.draw.line(s, YELLOW, (GS_SCALE_X - 9, CY), (GS_SCALE_X + 9, CY), 3)
+        if ils and ils.loc_dots is not None:
+            dots = max(-LS_MAX_DOTS, min(LS_MAX_DOTS, ils.loc_dots))
+            x = CX + dots * LS_DOT_PX
+            pts = [(x - 10, LOC_SCALE_Y), (x, LOC_SCALE_Y - 7), (x + 10, LOC_SCALE_Y), (x, LOC_SCALE_Y + 7)]
+            pygame.draw.polygon(s, MAGENTA, pts, 0 if abs(ils.loc_dots) < LS_MAX_DOTS else 2)
+        if ils and ils.gs_dots is not None:
+            dots = max(-LS_MAX_DOTS, min(LS_MAX_DOTS, ils.gs_dots))
+            y = CY + dots * LS_DOT_PX  # aircraft above the glideslope: diamond below
+            pts = [(GS_SCALE_X, y - 10), (GS_SCALE_X + 7, y), (GS_SCALE_X, y + 10), (GS_SCALE_X - 7, y)]
+            pygame.draw.polygon(s, MAGENTA, pts, 0 if abs(ils.gs_dots) < LS_MAX_DOTS else 2)
+        # ILS identification, frequency and DME, bottom left.
+        c = sim.cockpit
+        self.text.blit(s, ils.ident if ils else f"{c.ils_mhz:6.2f}", 16, MAGENTA, (20, 462), "midleft")
+        if ils:
+            self.text.blit(s, f"{c.ils_mhz:6.2f}", 16, MAGENTA, (20, 482), "midleft")
+            if ils.dme_nm is not None:
+                self.text.blit(s, f"{ils.dme_nm:4.1f}NM", 16, MAGENTA, (20, 502), "midleft")
 
     # --- Attitude ----------------------------------------------------------------------
 
@@ -187,7 +227,7 @@ class PFD:
         if y_vmax > r.top:
             draw_barber(s, x, r.top, y_vmax, 8, RED, BLACK)
         y_vls, y_prot, y_amax = y_of(lim.vls), y_of(lim.v_alpha_prot), y_of(lim.v_alpha_max)
-        if y_vls < r.bottom and not sim.state.on_ground:  # low-speed bands only in flight
+        if y_vls < r.bottom:
             pygame.draw.rect(s, AMBER, (x + 2, y_vls, 3, max(0, y_prot - y_vls)))
             draw_barber(s, x, y_prot, y_amax, 8, AMBER, BLACK)
             pygame.draw.rect(s, RED, (x, y_amax, 8, max(0, r.bottom - y_amax)))
@@ -226,12 +266,21 @@ class PFD:
             pygame.draw.rect(s, RED, (r.right - 8, y_ground, 8, r.bottom - y_ground))
         s.set_clip(None)
 
+        target = sim.cockpit.alt_target_ft
+        y_target = y_of(target)
+        if r.top < y_target < r.bottom:
+            pygame.draw.rect(s, CYAN, (r.x, y_target - 9, 10, 18), 2)
+        else:
+            self.text.blit(s, f"{target:.0f}", 18, CYAN, (r.centerx, r.top - 12 if target > alt else r.bottom + 12))
+
+        minimum = sim.cockpit.minimum_ft
+        colour = AMBER if minimum is not None and alt < minimum else GREEN
         rounded = int(round(alt / 20.0)) * 20
         box = pygame.Rect(r.x - 6, CY - 17, r.w + 14, 34)
         pygame.draw.rect(s, BLACK, box)
         pygame.draw.rect(s, YELLOW, box, 2)
-        self.text.blit(s, f"{rounded // 100:3d}", 22, GREEN, (box.x + 52, CY), "midright")
-        self.text.blit(s, f"{rounded % 100:02d}", 16, GREEN, (box.x + 54, CY), "midleft")
+        self.text.blit(s, f"{rounded // 100:3d}", 22, colour, (box.x + 52, CY), "midright")
+        self.text.blit(s, f"{rounded % 100:02d}", 16, colour, (box.x + 54, CY), "midleft")
 
     def _vsi(self, s: pygame.Surface, vs_fpm: float) -> None:
         r = VSI_RECT
@@ -254,7 +303,7 @@ class PFD:
 
     # --- Heading and FMA ---------------------------------------------------------------
 
-    def _heading(self, s: pygame.Surface, hdg: float, track: float) -> None:
+    def _heading(self, s: pygame.Surface, hdg: float, track: float, bug: float, ils_course: float | None) -> None:
         r = HDG_RECT
         s.fill(TAPE, r)
         s.set_clip(r)
@@ -267,8 +316,20 @@ class PFD:
                 self.text.blit(s, str((d % 360) // 10 or 36), 16, WHITE, (x, r.top + 24))
         tx = CX + wrap_180(track - hdg) * PX_PER_DEG_HDG
         pygame.draw.polygon(s, GREEN, [(tx, r.top + 2), (tx + 6, r.top + 9), (tx, r.top + 16), (tx - 6, r.top + 9)], 2)
+        if ils_course is not None:
+            cx = CX + wrap_180(ils_course - hdg) * PX_PER_DEG_HDG
+            pygame.draw.line(s, MAGENTA, (cx, r.top), (cx, r.bottom), 3)
         s.set_clip(None)
         pygame.draw.line(s, YELLOW, (CX, r.top - 10), (CX, r.top + 14), 3)
+        # FCU heading: cyan triangle on the scale, or the value at the edge when off scale.
+        off = wrap_180(bug - hdg)
+        half = r.w / 2 / PX_PER_DEG_HDG
+        if abs(off) < half:
+            bx = CX + off * PX_PER_DEG_HDG
+            pygame.draw.polygon(s, CYAN, [(bx, r.top), (bx - 7, r.top - 12), (bx + 7, r.top - 12)], 2)
+        else:
+            x = r.right - 4 if off > 0 else r.left + 4
+            self.text.blit(s, f"{bug % 360:03.0f}", 16, CYAN, (x, r.top - 10), "midright" if off > 0 else "midleft")
 
     def _fma(self, s: pygame.Surface, sim: Simulation) -> None:
         for x in (120, 240, 360, 480):
@@ -281,6 +342,9 @@ class PFD:
             pygame.draw.rect(s, WHITE, box, 2)
             self.text.blit(s, "MAN", 16, WHITE, (box.centerx, box.y + 13))
             self.text.blit(s, mode, 16, WHITE, (box.centerx, box.y + 33))
+        if sim.cockpit.minimum_ft is not None:
+            self.text.blit(s, "BARO", 14, WHITE, (420, 26))
+            self.text.blit(s, f"{sim.cockpit.minimum_ft:.0f}", 16, CYAN, (420, 46))
         flaps = sim.aircraft.flap_config_at(sim.flap_pos)
         if sim.flap_pos > 0.01:
             self.text.blit(s, f"CONF {flaps.name}", 14, CYAN, (540, 22))

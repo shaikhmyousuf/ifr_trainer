@@ -1,10 +1,11 @@
 """Airport, runways and navaids loaded from ``airport.toml``."""
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from ..data_files import load_toml
+from ..nav.navaids import Navaid, navaid_from_dict
 from .units import FT
 
 
@@ -35,7 +36,7 @@ class Airport:
     elevation_ft: float
     magnetic_variation_deg: float
     runways: tuple[Runway, ...]
-    navaids: tuple[dict, ...] = field(default=())
+    navaids: tuple[Navaid, ...]
 
     @property
     def elevation_m(self) -> float:
@@ -53,11 +54,14 @@ class Airport:
     @classmethod
     def load(cls, path: Path | None = None) -> "Airport":
         d = load_toml("airport.toml", path)
+        runways = tuple(Runway(**r) for r in d["runways"])
+        thresholds = {r.ident: (r.threshold_x_m, r.threshold_y_m) for r in runways}
+        elevation_m = d["elevation_ft"] * FT
         return cls(
             ident=d["ident"],
             name=d["name"],
             elevation_ft=d["elevation_ft"],
             magnetic_variation_deg=d["magnetic_variation_deg"],
-            runways=tuple(Runway(**r) for r in d["runways"]),
-            navaids=tuple(d.get("navaids", ())),
+            runways=runways,
+            navaids=tuple(navaid_from_dict(n, elevation_m, thresholds) for n in d.get("navaids", ())),
         )

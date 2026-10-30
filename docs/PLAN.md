@@ -4,11 +4,16 @@ A lightweight instrument-flying trainer for practising **hand flying** with
 **A320-style displays**. It is loosely based on the A320, not a replica, and not
 a certified training device.
 
+**Scope: instrument flying only.** Every exercise starts in the air and is flown
+in cloud. Approaches end at the minimum with a go-around on instruments. Takeoff,
+landing, ground handling and pilot rudder are out of scope (the rudder only
+coordinates turns automatically).
+
 ## Decisions
 
 | Topic | Decision |
 |---|---|
-| Purpose | Hand flying under IFR: raw-data approaches, holds, tracking, partial panel. No autopilot. |
+| Purpose | Hand flying under IFR: raw-data approaches to minima and go-around, holds, tracking, partial panel. No autopilot, no takeoff or landing. |
 | Controls | Joystick (sidestick); keyboard fallback for testing |
 | Flight model | Our own, written in Python — no compiled flight dynamics library |
 | Rendering | pygame-ce, 2D only. No outside view (we are in cloud) |
@@ -32,9 +37,9 @@ src/ifr_trainer/
 ├── sim/           atmosphere, aircraft data, engines, flight model, speeds,
 │                  trim, airport, scenario, simulation (orchestrator)
 ├── fbw/           normal law (later: protections, alternate/direct law)
-├── nav/           (M4) VOR / DME / ILS / NDB receivers
-├── input/         joystick + keyboard, joystick test tool
-├── displays/      PFD, engine/systems panel, (M4) ND, (M6) standby
+├── nav/           navaids and VOR / DME / ILS / ADF receivers
+├── input/         joystick, mouse and keyboard, joystick test tool
+├── displays/      PFD, ND, lower panel (engines, config, radios, EFIS), (M6) standby
 ├── training/      (M5) scenarios, scoring, recorder, debrief
 └── app.py         main loop
 ```
@@ -48,8 +53,9 @@ src/ifr_trainer/
    pitch axis this already gives the Airbus feel of flight-path stability with
    neutral speed stability.
 2. **M2 — 6 degrees of freedom.** Rigid body with quaternion attitude, aero
-   coefficients from linear stability derivatives, rudder and sideslip, and a
-   ground model (takeoff roll, landing roll, brakes).
+   coefficients from linear stability derivatives, sideslip, automatic turn
+   coordination. (A ground model was built, then removed when takeoff and landing
+   left the scope.)
 3. **M3 — Full normal law** on the 6-DOF model: C* pitch law, roll-rate command,
    protections (high angle of attack and alpha floor, overspeed, pitch/bank).
 
@@ -64,29 +70,31 @@ Vapp on a 3° glidepath, approach N1 around 55–60 %, and VLS in CONF FULL arou
 * Origin of the local frame is the RWY 36 threshold. x is east and y is north,
   in metres.
 * RWY 36/18: 3000 m × 45 m, heading 360°/180°.
-* ILS 36 `ITRS` 110.30, ILS 18 `ITRN` 109.50, 3.0° glideslope.
-* VOR/DME `TRN` 113.40 on the field; NDB `TR` 380 kHz, 4 NM south (locator for RWY 36).
+* ILS 36 `ITRS` 110.30, ILS 18 `ITRN` 109.50, 3.0° glideslope, DME at the glideslope.
+* VOR/DME `TRN` 113.40 on the field; VOR/DME `WES` 115.20, 15 NM west and 10 NM north.
+* NDB `TR` 380 kHz, 4 NM south (locator for RWY 36); NDB `TN` 335 kHz, 4 NM north (RWY 18).
+* Minima: ILS DA 700 ft (200 ft above the field), VOR/DME MDA 1000 ft, NDB MDA 1100 ft.
 
 ## Milestones
 
-1. **Core loop** — window, fixed timestep, joystick and keyboard input, ISA atmosphere,
-   point-mass model with simple normal law, PFD (attitude, speed/altitude tapes,
-   VSI, heading, radio altitude), engine/flap/gear panel, touchdown check.
-2. **6-DOF model** with a ground model, plus tests for trim, conservation and
-   stability. *Done:* rigid body with quaternion attitude, stability-derivative
-   aerodynamics with stall and ground effect, spring-damper gear with brakes,
-   nosewheel steering, ground spoilers and strike points. The normal law is turned
-   into surface deflections by dynamic inversion, with an auto-trimming THS, direct
-   law on the ground and a 5 s blend after liftoff and touchdown. Also takeoff
-   scenarios, rudder and brake input, touchdown scoring and runway excursion checks.
-3. **Normal law and protections**: flare mode (the nose-down bias below 50 ft
-   that makes the pilot flare), full high angle-of-attack protection and alpha floor,
-   high-speed protection, and alternate/direct law for failure training.
-4. **Navigation**: ILS/VOR/DME/NDB receivers, ILS scales on the PFD, ND in
-   ROSE ILS / ROSE VOR / ARC modes, nav radio selection.
-5. **Training layer**: scenario files (holds, ILS/VOR/NDB approaches),
-   freeze/reposition, wind and turbulence, flight recorder, deviation scoring,
-   debrief plots.
+1. **Core loop** — window, fixed timestep, joystick, mouse and keyboard input,
+   ISA atmosphere, point-mass model with simple normal law, PFD, engine/flap/gear panel.
+2. **6-DOF model**, plus tests for trim and stability. *Done:* rigid body with
+   quaternion attitude and stability-derivative aerodynamics with stall. The normal
+   law is turned into surface deflections by dynamic inversion, with an
+   auto-trimming THS and automatic turn coordination.
+3. **Normal law and protections**: full high angle-of-attack protection and alpha
+   floor, high-speed protection, and alternate/direct law for failure training.
+4. **Navigation**. *Done:* VOR (radial, TO/FROM, 5°/dot), DME (slant range),
+   ILS (localizer full scale 105 m at the threshold, glideslope 0.35°/dot, ICAO
+   coverage), ADF; line-of-sight range and the VOR cone of confusion. ND in ROSE
+   ILS / ROSE VOR / ARC with bearing needles; PFD ILS scales, heading bug, altitude
+   target, BARO minimum. Clickable radios and EFIS/FCU panel. Minimum callout,
+   go-around scoring and terrain impact. ILS, VOR/DME, NDB, tracking and hold
+   scenarios.
+5. **Training layer**: freeze/reposition, turbulence, flight recorder, approach
+   scoring (localizer/glideslope/speed deviations, go-around quality), debrief plots,
+   hold entry and timing aids.
 6. **Failures**: unreliable airspeed, partial panel on standby instruments,
    engine failure, degraded laws.
 

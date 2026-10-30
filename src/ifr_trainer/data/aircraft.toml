@@ -46,8 +46,6 @@ yaw_aileron = -0.005
 yaw_rudder = 0.10
 cd_beta = 0.3
 speedbrake_cl = -0.10
-ground_spoiler_cl = -0.6
-ground_spoiler_cd = 0.08
 
 [controls]
 elevator_up_deg = 30.0
@@ -63,55 +61,11 @@ ths_rate_deg_s = 0.7
 elevator_rate_deg_s = 40.0
 aileron_rate_deg_s = 50.0
 rudder_rate_deg_s = 40.0
-nosewheel_pedal_deg = 6.0          # pedal steering authority, fading to zero at nosewheel_fade_kt
-nosewheel_fade_kt = 130.0
 
-[gear]
+[gear]                # drag only: the simulator has no ground phase
 cd = 0.020
 vle_kt = 280.0
 transit_s = 10.0
-rolling_friction = 0.015
-brake_friction = 0.5
-lateral_friction = 0.7
-
-[[gear.legs]]
-name = "nose"
-x = 11.4
-y = 0.0
-z = 2.9
-stiffness = 2.0e5
-damping = 4.2e4
-steerable = true
-braked = false
-
-[[gear.legs]]
-name = "left"
-x = -1.2
-y = -3.8
-z = 2.9
-stiffness = 9.4e5
-damping = 2.0e5
-steerable = false
-braked = true
-
-[[gear.legs]]
-name = "right"
-x = -1.2
-y = 3.8
-z = 2.9
-stiffness = 9.4e5
-damping = 2.0e5
-steerable = false
-braked = true
-
-# Points that must never touch the ground (x, y, z body metres).
-[gear.strike_points]
-"tail strike" = [-18.0, 0.0, -0.52]
-"left engine strike" = [3.0, -5.75, 2.45]
-"right engine strike" = [3.0, 5.75, 2.45]
-"left wingtip strike" = [-6.0, -17.9, -1.5]
-"right wingtip strike" = [-6.0, 17.9, -1.5]
-"belly landing" = [0.0, 0.0, 2.0]
 
 [flaps]
 transit_s_per_step = 6.0

@@ -6,8 +6,6 @@ from pathlib import Path
 
 from ..data_files import load_toml
 
-Vec = tuple[float, float, float]
-
 
 @dataclass(frozen=True)
 class FlapConfig:
@@ -76,8 +74,6 @@ class AeroDerivatives:
     yaw_rudder: float
     cd_beta: float
     speedbrake_cl: float
-    ground_spoiler_cl: float
-    ground_spoiler_cd: float
 
 
 @dataclass(frozen=True)
@@ -95,8 +91,6 @@ class ControlLimits:
     elevator_rate_deg_s: float
     aileron_rate_deg_s: float
     rudder_rate_deg_s: float
-    nosewheel_pedal_deg: float
-    nosewheel_fade_kt: float
 
     def rudder_limit_deg(self, cas_kt: float) -> float:
         """Rudder travel limiter: full travel at low speed, reduced at high speed."""
@@ -106,31 +100,10 @@ class ControlLimits:
 
 
 @dataclass(frozen=True)
-class GearLeg:
-    name: str
-    x: float
-    y: float
-    z: float
-    stiffness: float
-    damping: float
-    steerable: bool
-    braked: bool
-
-    @property
-    def position(self) -> Vec:
-        return (self.x, self.y, self.z)
-
-
-@dataclass(frozen=True)
 class GearData:
     cd: float
     vle_kt: float
     transit_s: float
-    rolling_friction: float
-    brake_friction: float
-    lateral_friction: float
-    legs: tuple[GearLeg, ...]
-    strike_points: dict[str, Vec]
 
 
 @dataclass(frozen=True)
@@ -193,16 +166,13 @@ class AircraftData:
         e = dict(d["engines"])
         e["lever_n1"] = tuple((float(x), float(y)) for x, y in e["lever_n1"])
         e["detents"] = dict(e["detents"])
-        g = dict(d["gear"])
-        g["legs"] = tuple(GearLeg(**leg) for leg in g["legs"])
-        g["strike_points"] = {name: tuple(p) for name, p in g["strike_points"].items()}
         scalars = {k: v for k, v in d.items() if not isinstance(v, dict)}
         return cls(
             **scalars,
             inertia=Inertia(**d["inertia"]),
             aero=AeroDerivatives(**d["aero"]),
             controls=ControlLimits(**d["controls"]),
-            gear=GearData(**g),
+            gear=GearData(**d["gear"]),
             flap_transit_s_per_step=d["flaps"]["transit_s_per_step"],
             flaps=tuple(FlapConfig(**f) for f in d["flaps"]["configs"]),
             engines=EngineData(**e),

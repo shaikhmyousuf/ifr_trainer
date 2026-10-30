@@ -1,19 +1,21 @@
-import math
-
 import pytest
 
 from ifr_trainer.sim.airport import Airport
 from ifr_trainer.sim.scenario import load_scenarios
-from ifr_trainer.sim.simulation import Phase, Severity, wind_vector
+from ifr_trainer.sim.simulation import Phase, Severity, Simulation, wind_vector
 from ifr_trainer.sim.units import KT
 
 from .conftest import fly, fly_until
 
 
-def test_scenarios_load_and_reference_real_runways():
+def test_every_scenario_starts_trimmed_and_flies(aircraft):
     airport = Airport.load()
-    for sc in load_scenarios().values():
-        airport.runway(sc.runway)
+    for name, sc in load_scenarios().items():
+        sim = Simulation(aircraft, airport, sc)
+        alt = sim.alt_ft
+        fly(sim, 5)
+        assert sim.phase is Phase.FLYING, name
+        assert abs(sim.alt_ft - alt - 5 * sim.vs_fpm / 60) < 30, name
 
 
 def test_wind_from_west_blows_east():
@@ -32,114 +34,62 @@ def test_flaps_and_gear_move_over_time(make_sim, aircraft):
     assert sim.flap_pos == 2 and sim.gear_pos == 1
 
 
-def test_reset_restores_start(make_sim):
-    sim = make_sim()
+def test_reset_restores_start_and_cockpit(make_sim):
+    sim = make_sim(cockpit={"minimum_ft": 700.0, "ils_crs": 360.0})
     sim.inputs.stick_roll = 1.0
+    sim.cockpit.minimum_ft = 900.0
     fly(sim, 3)
     inputs = sim.reset()
     assert sim.state.phi == pytest.approx(0.0) and inputs.stick_roll == 0.0
+    assert sim.cockpit.minimum_ft == 700.0
 
 
-# --- Ground ---------------------------------------------------------------------------
+# --- Minimum, go-around, terrain ------------------------------------------------------
 
 
-def _takeoff_sim(make_sim, **kw):
-    return make_sim(distance_nm=-0.03, on_ground=True, flaps=1, **kw)
-
-
-def test_parked_aircraft_sits_still_on_its_gear(make_sim, aircraft):
-    sim = _takeoff_sim(make_sim)
-    x, y = sim.state.x_m, sim.state.y_m
-    fly(sim, 10)
-    loads = sim.state.gear.loads
-    total = sum(loads.values())
-    assert total == pytest.approx(sim.mass * 9.80665, rel=0.02)
-    assert 0.05 < loads["nose"] / total < 0.15  # nosewheel carries ~10 % of the weight
-    assert math.hypot(sim.state.x_m - x, sim.state.y_m - y) < 0.5
-    assert sim.phase is Phase.ON_GROUND and sim.fcc.law == "GROUND"
-
-
-def test_takeoff_roll_rotation_and_liftoff(make_sim):
-    sim = _takeoff_sim(make_sim)
-    rwy = sim.airport.runway("36")
-    sim.inputs.brakes = 0.0
-    sim.inputs.lever = 1.0
-    assert fly_until(sim, lambda: sim.cas_kt >= 145, 45)
-    assert 25 < sim.time_s < 40  # A320 at TOGA: about half a minute to VR
-    along, cross = rwy.to_runway_frame(sim.state.x_m, sim.state.y_m)
-    assert along < 1300 and abs(cross) < 1
-    sim.inputs.stick_pitch = 0.4
-    assert fly_until(sim, lambda: sim.phase is Phase.AIRBORNE, 10)
-    sim.inputs.stick_pitch = 0.0
-    sim.inputs.gear_down = False
-    fly(sim, 20)
-    assert sim.phase is Phase.AIRBORNE
-    assert sim.fcc.law == "NORMAL"
-    assert sim.vs_fpm > 1000 and sim.agl_ft > 500
-
-
-def test_full_pedal_at_speed_leaves_the_runway(make_sim):
-    sim = _takeoff_sim(make_sim)
-    sim.inputs.brakes = 0.0
-    sim.inputs.lever = 1.0
-    fly_until(sim, lambda: sim.cas_kt >= 50, 30)
-    sim.inputs.rudder = 1.0
-    fly(sim, 20)
-    assert sim.phase is Phase.CRASHED and "excursion" in sim.message
-
-
-def _short_final(make_sim, **kw):
-    fields = dict(distance_nm=0.4, altitude_ft=660.0, cas_kt=138.0, flaps=4, gear_down=True, flight_path_deg=-3.0)
+def _ils_final(make_sim, **kw):
+    # On the localizer and glideslope at 4 NM, configured for landing.
+    fields = dict(distance_nm=4.0, altitude_ft=1830.0, cas_kt=138.0, flaps=4, gear_down=True,
+                  flight_path_deg=-3.0, cockpit={"minimum_ft": 700.0})
     fields.update(kw)
     return make_sim(**fields)
 
 
-def _flare_and_stop(sim):
-    sim.max_ground_spoiler = 0.0
-    touched = False
-    for _ in range(120 * 120):
-        if sim.phase is Phase.CRASHED:
-            return
-        if not touched and sim.agl_ft < 30:
-            sim.inputs.stick_pitch = max(-0.3, min(0.5, (-150 - sim.vs_fpm) / 1500))
-            sim.inputs.lever = 0.0
-        if sim.state.on_ground:
-            touched = True
-            sim.inputs.stick_pitch = 0.0
-            sim.inputs.brakes = 1.0
-        sim.step(1 / 120, sim.inputs)
-        sim.max_ground_spoiler = max(sim.max_ground_spoiler, sim.surfaces.ground_spoiler)
-        if touched and sim.groundspeed_kt < 0.5:
-            return
+def test_minimum_callout_then_go_around_is_scored(make_sim):
+    sim = _ils_final(make_sim)
+    assert fly_until(sim, lambda: sim.minimum_reached_time is not None, 120)
+    assert sim.message.startswith("MINIMUM")
+    sim.inputs.lever = 1.0  # TOGA...
+    sim.inputs.stick_pitch = 0.5  # ...and rotate to the go-around attitude
+    assert fly_until(sim, lambda: sim.message.startswith(("GO-AROUND", "LATE")), 20)
+    assert sim.severity is Severity.INFO, sim.message
+    sim.inputs.stick_pitch = 0.0
+    sim.inputs.gear_down = False
+    fly(sim, 20)
+    assert sim.phase is Phase.FLYING and sim.vs_fpm > 500
 
 
-def test_flared_landing_touches_down_gently_and_stops(make_sim):
-    sim = _short_final(make_sim)
-    _flare_and_stop(sim)
-    assert sim.phase is Phase.ON_GROUND
-    assert sim.severity is Severity.INFO
-    assert sim.message.startswith("TOUCHDOWN") and "Stopped" in sim.message
-    assert sim.max_ground_spoiler > 0.9
+def test_slow_go_around_is_late(make_sim):
+    sim = _ils_final(make_sim)
+    fly_until(sim, lambda: sim.minimum_reached_time is not None, 120)
+    fly(sim, 6)  # continue descending for 6 s (~75 ft at 750 fpm) before reacting
+    sim.inputs.lever = 1.0
+    sim.inputs.stick_pitch = 0.5
+    fly_until(sim, lambda: sim.message.startswith(("GO-AROUND", "LATE")), 20)
+    assert sim.severity is Severity.CAUTION and sim.message.startswith("LATE")
 
 
-def test_landing_without_flare_is_hard(make_sim):
-    sim = _short_final(make_sim)
-    fly_until(sim, lambda: sim.state.on_ground, 60)
-    fly(sim, 0.5)
-    assert sim.severity is Severity.CAUTION and sim.message.startswith("HARD LANDING")
-
-
-def test_gear_up_landing_crashes(make_sim):
-    sim = _short_final(make_sim, gear_down=False)
-    _flare_and_stop(sim)
+def test_continuing_below_minimum_flies_into_terrain(make_sim):
+    sim = _ils_final(make_sim)
+    fly_until(sim, lambda: sim.phase is Phase.CRASHED, 120)
     assert sim.phase is Phase.CRASHED
+    assert "terrain" in sim.message and "minimum" in sim.message
 
 
-def test_steep_approach_crashes(make_sim):
-    sim = _short_final(make_sim, flight_path_deg=-6.0)
-    fly_until(sim, lambda: sim.state.on_ground, 60)
-    fly(sim, 0.5)
-    assert sim.phase is Phase.CRASHED
+def test_no_minimum_callout_when_not_set(make_sim):
+    sim = _ils_final(make_sim, cockpit={})
+    fly(sim, 40)
+    assert sim.minimum_reached_time is None
 
 
 def test_mouse_drag_deflects_stick_and_release_centres(aircraft, monkeypatch):

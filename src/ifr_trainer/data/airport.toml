@@ -57,3 +57,17 @@ type = "NDB"
 frequency = 380.0
 x_m = 0.0
 y_m = -7408.0
+
+[[navaids]]
+ident = "TN"
+type = "NDB"
+frequency = 335.0
+x_m = 0.0
+y_m = 10408.0
+
+[[navaids]]
+ident = "WES"
+type = "VORDME"
+frequency = 115.20
+x_m = -27780.0
+y_m = 18520.0

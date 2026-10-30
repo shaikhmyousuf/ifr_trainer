@@ -1,6 +1,8 @@
 # IFR Trainer
 
-A lightweight instrument-flying trainer for hand flying with A320-style displays.
+A lightweight instrument-flying trainer with A320-style displays, for hand flying.
+Every exercise is flown in cloud and starts in the air. Approaches end with a
+go-around on instruments at the minimum; there is no takeoff or landing.
 It is loosely based on the A320, not a replica, and not a certified training device.
 See [docs/PLAN.md](docs/PLAN.md) for the design and milestones.
 
@@ -13,11 +15,26 @@ uv sync
 ## Fly
 
 ```bash
-uv run ifr-trainer                       # default scenario: 12 NM final RWY 36
+uv run ifr-trainer                      # default: vectors for ILS 36
 uv run ifr-trainer --list-scenarios
-uv run ifr-trainer --scenario final36_xwind
-uv run ifr-trainer --scenario takeoff36
+uv run ifr-trainer --scenario vor36
 ```
+
+Scenarios include ILS (with and without crosswind), VOR/DME and NDB approaches,
+VOR radial tracking and a hold. At the minimum ("MINIMUM" on the PFD and the
+altitude digits turn amber), go around: TOGA, pitch to about 15°, gear up, flaps
+one step. The go-around is scored by how far you sank below the minimum.
+
+## Displays
+
+* **PFD**: attitude, speed and altitude tapes, VSI, heading with the FCU heading bug,
+  altitude target, BARO minimum, and with **LS** on: localizer and glideslope
+  scales, ILS course, ident, frequency and DME.
+* **ND**: ROSE ILS, ROSE VOR (course pointer, deviation, TO/FROM) and ARC (map),
+  two bearing needles (VOR or ADF), wind, GS/TAS, DME.
+* **Lower panel**: engines, flaps, gear, speedbrake, pitch trim, and the nav radios
+  and EFIS/FCU settings. Hover a field and use the mouse wheel to change it
+  (Shift = coarse), or click its left/right half for −/+.
 
 ## Controls
 
@@ -28,20 +45,19 @@ No joystick is needed: the mouse works as a spring-loaded sidestick. With a joys
    `uv run ifr-trainer --controls my_controls.toml`.
 
 After a reset, the thrust lever stays at the trimmed position until you move the
-hardware throttle ("MOVE THR TO SYNC").
+hardware throttle ("MOVE THR").
 
-| Key | Action |
+| Input | Action |
 |---|---|
 | Mouse: hold left button + drag | sidestick, springs back to centre on release (drag down = pull) |
-| Mouse wheel | thrust lever |
+| Mouse wheel | thrust lever (over a panel field: tune it) |
 | Arrows | stick, half deflection (hold Shift for full) |
-| Z / X | rudder pedals (steer on the ground, sideslip in flight) |
-| Space | wheel brakes (hold) |
 | W / S | thrust lever up / down |
 | 1 2 3 4 | lever to IDLE / CL / MCT / TOGA |
 | F / Shift+F | flaps extend / retract |
 | G | gear |
 | B | speedbrake (RET → 1/2 → FULL) |
+| M / N / L | ND mode / ND range / ILS scales on the PFD |
 | P | pause |
 | Ctrl+R | reset scenario |
 | H | help |

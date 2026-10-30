@@ -104,17 +104,6 @@ def test_full_back_stick_at_idle_does_not_stall(make_sim):
     assert max_alpha < alpha_stall
 
 
-def test_pedal_commands_sideslip_and_release_recoordinates(make_sim):
-    sim = make_sim()
-    sim.inputs.rudder = 0.5
-    fly(sim, 5)
-    assert math.degrees(sim.state.beta) < -4  # right pedal: nose right of the airflow
-    assert sim.surfaces.rudder > 0
-    sim.inputs.rudder = 0.0
-    fly(sim, 6)
-    assert abs(math.degrees(sim.state.beta)) < 0.5
-
-
 def test_crosswind_crabs_with_zero_sideslip(make_sim):
     sim = make_sim(wind_dir_deg=270.0, wind_kt=30.0)
     fly(sim, 10)
