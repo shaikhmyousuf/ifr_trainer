@@ -1,0 +1,20 @@
+# Joystick mapping. Run `uv run ifr-trainer --joystick-test` to find axis and button numbers.
+# Copy this file, edit it, and pass it with --controls path/to/controls.toml.
+[joystick]
+device = 0
+pitch_axis = 1          # pull back must read +1 (set pitch_invert if it reads -1)
+pitch_invert = false
+roll_axis = 0           # right must read +1
+roll_invert = false
+throttle_axis = 2       # -1 to disable and use the keyboard for thrust
+throttle_invert = true  # most throttles read -1 when fully forward
+deadzone = 0.05
+expo = 0.3              # 0 = linear, 1 = fully cubic
+
+[joystick.buttons]      # -1 = not assigned
+flaps_up = 4
+flaps_down = 5
+gear = 6
+speedbrake = 7
+pause = -1
+reset = -1

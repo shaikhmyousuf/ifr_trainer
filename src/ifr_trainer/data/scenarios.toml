@@ -1,0 +1,42 @@
+# Start conditions. Position is distance_nm before the threshold on the extended centreline.
+# altitude_ft is MSL (field elevation 500 ft). heading_deg defaults to the runway heading.
+
+[final36]
+description = "12 NM final RWY 36, clean, 220 kt, below the glidepath."
+runway = "36"
+distance_nm = 12.0
+altitude_ft = 3500.0
+cas_kt = 220.0
+flaps = 0
+gear_down = false
+
+[final36_xwind]
+description = "8 NM final RWY 36, CONF 1, 180 kt, wind 270/20."
+runway = "36"
+distance_nm = 8.0
+altitude_ft = 2800.0
+cas_kt = 180.0
+flaps = 1
+gear_down = false
+wind_dir_deg = 270.0
+wind_kt = 20.0
+
+[final18]
+description = "10 NM final RWY 18, CONF 2, 170 kt."
+runway = "18"
+distance_nm = 10.0
+altitude_ft = 3500.0
+cas_kt = 170.0
+flaps = 2
+gear_down = false
+wind_dir_deg = 200.0
+wind_kt = 10.0
+
+[upper_air]
+description = "Free flight: 25 NM south, FL100, 250 kt, heading 360."
+runway = "36"
+distance_nm = 25.0
+altitude_ft = 10000.0
+cas_kt = 250.0
+flaps = 0
+gear_down = false

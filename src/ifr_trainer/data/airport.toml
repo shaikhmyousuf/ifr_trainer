@@ -1,0 +1,59 @@
+# Fictional airport. Local frame origin is the RWY 36 threshold; x east, y north (metres).
+ident = "XIFR"
+name = "Trainer Field"
+elevation_ft = 500.0
+magnetic_variation_deg = 0.0
+
+[[runways]]
+ident = "36"
+heading_deg = 360.0
+threshold_x_m = 0.0
+threshold_y_m = 0.0
+length_m = 3000.0
+width_m = 45.0
+
+[[runways]]
+ident = "18"
+heading_deg = 180.0
+threshold_x_m = 0.0
+threshold_y_m = 3000.0
+length_m = 3000.0
+width_m = 45.0
+
+[[navaids]]
+ident = "ITRS"
+type = "ILS"
+runway = "36"
+frequency = 110.30
+course_deg = 360.0
+glideslope_deg = 3.0
+localizer_x_m = 0.0
+localizer_y_m = 3300.0
+glideslope_x_m = 120.0
+glideslope_y_m = 300.0
+
+[[navaids]]
+ident = "ITRN"
+type = "ILS"
+runway = "18"
+frequency = 109.50
+course_deg = 180.0
+glideslope_deg = 3.0
+localizer_x_m = 0.0
+localizer_y_m = -300.0
+glideslope_x_m = 120.0
+glideslope_y_m = 2700.0
+
+[[navaids]]
+ident = "TRN"
+type = "VORDME"
+frequency = 113.40
+x_m = 900.0
+y_m = 1500.0
+
+[[navaids]]
+ident = "TR"
+type = "NDB"
+frequency = 380.0
+x_m = 0.0
+y_m = -7408.0

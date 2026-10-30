@@ -1,0 +1,84 @@
+# Approximate A320-200 data, tuned for handling, not certified performance.
+name = "A320 (approximate)"
+mass_kg = 64000.0
+wing_area_m2 = 122.6
+span_m = 35.8
+oswald = 0.85
+cl_alpha_per_rad = 5.2
+cl0 = 0.20
+cd0 = 0.020
+mach_crit = 0.77
+vmo_kt = 350.0
+mmo = 0.82
+speedbrake_cd = 0.025
+
+[gear]
+cd = 0.020
+vle_kt = 280.0
+transit_s = 10.0
+
+[flaps]
+transit_s_per_step = 6.0
+
+# CONF 0, 1, 2, 3, FULL. vfe_kt omitted = no flap limit.
+[[flaps.configs]]
+name = "0"
+cl0_delta = 0.0
+cl_max = 1.40
+cd0_delta = 0.0
+vls_factor = 1.28
+
+[[flaps.configs]]
+name = "1"
+cl0_delta = 0.25
+cl_max = 1.85
+cd0_delta = 0.008
+vfe_kt = 230.0
+vls_factor = 1.23
+
+[[flaps.configs]]
+name = "2"
+cl0_delta = 0.55
+cl_max = 2.20
+cd0_delta = 0.020
+vfe_kt = 200.0
+vls_factor = 1.23
+
+[[flaps.configs]]
+name = "3"
+cl0_delta = 0.70
+cl_max = 2.40
+cd0_delta = 0.030
+vfe_kt = 185.0
+vls_factor = 1.23
+
+[[flaps.configs]]
+name = "FULL"
+cl0_delta = 0.90
+cl_max = 2.69
+cd0_delta = 0.042
+vfe_kt = 177.0
+vls_factor = 1.23
+
+[engines]
+count = 2
+static_thrust_n = 120000.0        # per engine, sea level
+n1_idle = 20.5
+n1_max = 96.0                     # N1 that gives full rated thrust
+idle_thrust_fraction = 0.03
+thrust_exponent = 2.5             # thrust ~ N1 fraction ** exponent
+density_exponent = 0.75
+mach_lapse = 0.35
+accel_rate_low = 7.0              # %N1/s below crossover (slow spool-up from idle)
+accel_rate_high = 15.0            # %N1/s above crossover
+decel_rate = 10.0                 # %N1/s
+spool_crossover_n1 = 50.0
+spool_tau_s = 1.0
+# Thrust lever position (0 = IDLE, 1 = TOGA) -> commanded N1, piecewise linear.
+lever_n1 = [[0.0, 20.5], [0.556, 89.0], [0.778, 93.0], [1.0, 96.0]]
+
+[engines.detents]
+IDLE = 0.0
+CL = 0.556
+MCT = 0.778
+TOGA = 1.0
