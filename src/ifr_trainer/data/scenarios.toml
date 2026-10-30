@@ -40,3 +40,19 @@ altitude_ft = 10000.0
 cas_kt = 250.0
 flaps = 0
 gear_down = false
+
+[takeoff36]
+description = "Lined up on RWY 36, CONF 1, brakes set. TOGA, rotate at 145 kt."
+runway = "36"
+distance_nm = -0.03
+on_ground = true
+flaps = 1
+
+[takeoff36_xwind]
+description = "Lined up on RWY 36, CONF 1, wind 300/20."
+runway = "36"
+distance_nm = -0.03
+on_ground = true
+flaps = 1
+wind_dir_deg = 300.0
+wind_kt = 20.0

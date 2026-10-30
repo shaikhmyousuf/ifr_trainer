@@ -5,6 +5,7 @@ import time
 
 import pygame
 
+from ..sim.aero import Surfaces
 from ..sim.simulation import Simulation
 from .common import AMBER, BLACK, CYAN, GREEN, GREY, RED, TAPE_DARK, WHITE, Text
 
@@ -33,7 +34,8 @@ class EnginePanel:
         self._lever(s, sim, throttle_needs_sync)
         self._flaps(s, sim)
         self._gear(s, sim.gear_pos)
-        self._speedbrake(s, sim.speedbrake)
+        self._speedbrake(s, sim.surfaces)
+        self._controls(s, sim)
         self._warnings(s, sim)
         self._info(s, sim, joystick_name)
         return s
@@ -100,10 +102,28 @@ class EnginePanel:
             else:
                 pygame.draw.polygon(s, GREY, pts, 1)
 
-    def _speedbrake(self, s: pygame.Surface, speedbrake: float) -> None:
+    def _speedbrake(self, s: pygame.Surface, surfaces: Surfaces) -> None:
+        self.text.blit(s, "SPD BRK", 14, WHITE, (500, 352))
+        if surfaces.ground_spoiler > 0.05:
+            self.text.blit(s, "GND SPLR", 16, GREEN, (500, 372))
+            return
+        speedbrake = surfaces.speedbrake
         label = {0.0: "RET", 0.5: "1/2", 1.0: "FULL"}.get(round(speedbrake * 2) / 2, "MOV")
-        self.text.blit(s, "SPD BRK", 14, WHITE, (500, 362))
-        self.text.blit(s, label, 16, GREEN if speedbrake == 0 else AMBER, (500, 382))
+        self.text.blit(s, label, 16, GREEN if speedbrake == 0 else AMBER, (500, 372))
+
+    def _controls(self, s: pygame.Surface, sim: Simulation) -> None:
+        """Pitch trim, rudder position and wheel brakes, under the flaps."""
+        ths = math.degrees(sim.surfaces.ths)
+        self.text.blit(s, f"PITCH TRIM {abs(ths):3.1f} {'UP' if ths >= 0 else 'DN'}", 14, CYAN, (290, 352))
+        x0, width, y = 220, 140, 380
+        self.text.blit(s, "RUD", 14, WHITE, (x0 - 30, y))
+        pygame.draw.line(s, GREY, (x0, y), (x0 + width, y), 2)
+        pygame.draw.line(s, WHITE, (x0 + width / 2, y - 6), (x0 + width / 2, y + 6), 2)
+        limit = math.radians(sim.aircraft.controls.rudder_deg)
+        x = x0 + width / 2 + sim.surfaces.rudder / limit * width / 2
+        pygame.draw.polygon(s, GREEN, [(x, y - 2), (x - 6, y - 10), (x + 6, y - 10)])
+        if sim.inputs.brakes > 0:
+            self.text.blit(s, "BRAKES", 14, AMBER, (500, 392))
 
     def _warnings(self, s: pygame.Surface, sim: Simulation) -> None:
         lim = sim.speed_limits()
@@ -129,7 +149,7 @@ class EnginePanel:
             f"{sim.airport.ident} RWY {sim.scenario.runway}  THR {sim.threshold_distance_nm:5.1f} NM",
             f"AGL {sim.agl_ft:6.0f} FT   GS {sim.groundspeed_kt:4.0f} KT",
             f"TRK {sim.track_deg:05.1f}   WIND {wind_from:03.0f}/{wind_kt:.0f}",
-            f"MASS {sim.mass / 1000:4.1f} T   TIME {t // 3600:02d}:{t // 60 % 60:02d}:{t % 60:02d}",
+            f"LAW {sim.fcc.law:6s} MASS {sim.mass / 1000:4.1f} T  TIME {t // 3600:02d}:{t // 60 % 60:02d}:{t % 60:02d}",
             f"INPUT {joystick_name[:30]}",
             "H = help",
         ]

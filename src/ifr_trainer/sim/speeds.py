@@ -30,7 +30,7 @@ def speed_limits(ac: AircraftData, mass: float, flap_pos: float, gear_pos: float
     if cfg.vfe_kt is not None:
         vmax = min(vmax, cfg.vfe_kt)
     if gear_pos > 0.0:
-        vmax = min(vmax, ac.vle_kt)
+        vmax = min(vmax, ac.gear.vle_kt)
     green_dot = None
     if flap_pos < 0.01:
         green_dot = 2.0 * mass / 1000.0 + 85.0 + max(0.0, (h_m / FT - 20000.0) / 1000.0)

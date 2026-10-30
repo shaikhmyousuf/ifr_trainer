@@ -16,9 +16,12 @@ uv sync
 uv run ifr-trainer                       # default scenario: 12 NM final RWY 36
 uv run ifr-trainer --list-scenarios
 uv run ifr-trainer --scenario final36_xwind
+uv run ifr-trainer --scenario takeoff36
 ```
 
-## Joystick
+## Controls
+
+No joystick is needed: the mouse works as a spring-loaded sidestick. With a joystick:
 
 1. `uv run ifr-trainer --joystick-test` shows live axis and button numbers.
 2. Copy `src/ifr_trainer/data/controls.toml`, set your axes and buttons, then run
@@ -29,7 +32,11 @@ hardware throttle ("MOVE THR TO SYNC").
 
 | Key | Action |
 |---|---|
-| Arrows | stick (keyboard fallback) |
+| Mouse: hold left button + drag | sidestick, springs back to centre on release (drag down = pull) |
+| Mouse wheel | thrust lever |
+| Arrows | stick, half deflection (hold Shift for full) |
+| Z / X | rudder pedals (steer on the ground, sideslip in flight) |
+| Space | wheel brakes (hold) |
 | W / S | thrust lever up / down |
 | 1 2 3 4 | lever to IDLE / CL / MCT / TOGA |
 | F / Shift+F | flaps extend / retract |

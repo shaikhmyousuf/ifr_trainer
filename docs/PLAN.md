@@ -73,8 +73,15 @@ Vapp on a 3° glidepath, approach N1 around 55–60 %, and VLS in CONF FULL arou
    point-mass model with simple normal law, PFD (attitude, speed/altitude tapes,
    VSI, heading, radio altitude), engine/flap/gear panel, touchdown check.
 2. **6-DOF model** with a ground model, plus tests for trim, conservation and
-   stability.
-3. **Normal law and protections**; alternate/direct law for failure training.
+   stability. *Done:* rigid body with quaternion attitude, stability-derivative
+   aerodynamics with stall and ground effect, spring-damper gear with brakes,
+   nosewheel steering, ground spoilers and strike points. The normal law is turned
+   into surface deflections by dynamic inversion, with an auto-trimming THS, direct
+   law on the ground and a 5 s blend after liftoff and touchdown. Also takeoff
+   scenarios, rudder and brake input, touchdown scoring and runway excursion checks.
+3. **Normal law and protections**: flare mode (the nose-down bias below 50 ft
+   that makes the pilot flare), full high angle-of-attack protection and alpha floor,
+   high-speed protection, and alternate/direct law for failure training.
 4. **Navigation**: ILS/VOR/DME/NDB receivers, ILS scales on the PFD, ND in
    ROSE ILS / ROSE VOR / ARC modes, nav radio selection.
 5. **Training layer**: scenario files (holds, ILS/VOR/NDB approaches),

@@ -13,15 +13,20 @@ from .input.joystick_test import run_joystick_test
 from .sim.aircraft import AircraftData
 from .sim.airport import Airport
 from .sim.scenario import load_scenarios
-from .sim.simulation import Phase, Simulation
+from .sim.simulation import Phase, Severity, Simulation
 
 SIM_DT = 1.0 / 120.0
 MAX_FRAME_S = 0.25
 WINDOW = (1240, 640)
+MESSAGE_S = 20.0
 
 HELP = [
-    "Joystick: pitch/roll, throttle (move it to take over after a reset)",
-    "Arrows      stick (keyboard)",
+    "Mouse       hold left button + drag = sidestick (release centres)",
+    "            drag down = pull (nose up), sideways = roll",
+    "Wheel       thrust lever",
+    "Arrows      stick, half deflection (Shift = full)",
+    "Z / X       rudder pedals left / right (steer on the ground)",
+    "Space       wheel brakes (hold)",
     "W / S       thrust lever up / down",
     "1 2 3 4     lever to IDLE / CL / MCT / TOGA",
     "F / Shift+F flaps extend / retract",
@@ -78,12 +83,14 @@ def run(scenario_name: str, controls_path: Path | None) -> None:
         screen.blit(panel.draw(sim, controls.throttle_needs_sync, controls.joystick_name), (620, 20))
         if paused:
             text.blit(screen, "PAUSED", 36, AMBER, (WINDOW[0] / 2, 40))
-        if sim.phase is not Phase.FLYING:
-            colour = GREEN if sim.phase is Phase.LANDED else RED
-            text.blit(screen, sim.message, 22, colour, (WINDOW[0] / 2, WINDOW[1] - 40))
+        crashed = sim.phase is Phase.CRASHED
+        if sim.message and (crashed or sim.time_s - sim.message_time < MESSAGE_S):
+            colour = {Severity.INFO: GREEN, Severity.CAUTION: AMBER, Severity.CRASH: RED}[sim.severity]
+            text.blit(screen, sim.message, 18, colour, (WINDOW[0] / 2, WINDOW[1] - 40))
+        if crashed:
             text.blit(screen, "Ctrl+R to fly again", 16, WHITE, (WINDOW[0] / 2, WINDOW[1] - 16))
         if show_help:
-            overlay = pygame.Surface((560, 40 + 26 * len(HELP)), pygame.SRCALPHA)
+            overlay = pygame.Surface((680, 40 + 26 * len(HELP)), pygame.SRCALPHA)
             overlay.fill((0, 0, 0, 220))
             for i, line in enumerate(HELP):
                 text.blit(overlay, line, 16, WHITE, (20, 30 + i * 26), "midleft")

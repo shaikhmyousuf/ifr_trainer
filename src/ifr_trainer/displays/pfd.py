@@ -36,6 +36,9 @@ PX_PER_KT = 4.0
 PX_PER_FT = 0.29
 PX_PER_DEG_HDG = 8.0
 BANK_RADIUS = 145
+STICK_BOX = pygame.Rect(176, 372, 44, 44)
+SLIP_PX_PER_G = 150.0
+SLIP_MAX_PX = 30.0
 
 
 def vsi_fraction(vs_fpm: float) -> float:
@@ -59,12 +62,13 @@ class PFD:
         s = self.surface
         s.fill(BLACK)
         st = sim.state
-        self._attitude(s, math.degrees(st.theta), st.phi)
+        self._attitude(s, math.degrees(st.theta), st.phi, st.ny)
         self._speed_tape(s, sim)
         self._altitude_tape(s, sim)
         self._vsi(s, sim.vs_fpm)
         self._heading(s, sim.heading_deg, sim.track_deg)
         self._fma(s, sim)
+        self._stick_indicator(s, sim.inputs.stick_pitch, sim.inputs.stick_roll)
         agl = sim.agl_ft
         if agl < 2500:
             step = 10 if agl > 50 else (5 if agl > 10 else 1)
@@ -73,7 +77,7 @@ class PFD:
 
     # --- Attitude ----------------------------------------------------------------------
 
-    def _attitude(self, s: pygame.Surface, theta_deg: float, phi: float) -> None:
+    def _attitude(self, s: pygame.Surface, theta_deg: float, phi: float, ny: float) -> None:
         sp, cp = math.sin(phi), math.cos(phi)
         dx, dy = cp, -sp  # along the horizon
         ux, uy = -sp, -cp  # towards the sky
@@ -104,11 +108,11 @@ class PFD:
                     s.blit(label, label.get_rect(center=(round(pos[0]), round(pos[1]))))
 
         s.set_clip(ATT_RECT)
-        self._bank_scale(s, phi)
+        self._bank_scale(s, phi, ny)
         s.set_clip(None)
         self._aircraft_symbol(s)
 
-    def _bank_scale(self, s: pygame.Surface, phi: float) -> None:
+    def _bank_scale(self, s: pygame.Surface, phi: float, ny: float) -> None:
         r = BANK_RADIUS
 
         def pt(t: float, radius: float) -> tuple[float, float]:
@@ -126,6 +130,10 @@ class PFD:
         pygame.draw.polygon(s, WHITE, [pt(-phi, r), pt(-phi - 0.05, r + 12), pt(-phi + 0.05, r + 12)], 2)
         tip = CY - r + 3
         pygame.draw.polygon(s, YELLOW, [(CX, tip), (CX - 8, tip + 12), (CX + 8, tip + 12)])
+        # Sideslip index: moves opposite to lateral acceleration, like a ball. "Step on it" to centre it.
+        dx = max(-SLIP_MAX_PX, min(SLIP_MAX_PX, -ny * SLIP_PX_PER_G))
+        y = tip + 14
+        pygame.draw.polygon(s, YELLOW, [(CX + dx - 8, y), (CX + dx + 8, y), (CX + dx + 11, y + 6), (CX + dx - 11, y + 6)])
 
     def _aircraft_symbol(self, s: pygame.Surface) -> None:
         for side in (-1, 1):
@@ -139,6 +147,20 @@ class PFD:
         centre = pygame.Rect(CX - 5, CY - 5, 10, 10)
         pygame.draw.rect(s, BLACK, centre)
         pygame.draw.rect(s, YELLOW, centre, 2)
+
+    def _stick_indicator(self, s: pygame.Surface, pitch: float, roll: float) -> None:
+        """Sidestick position: white corners mark full travel, the cross is the stick."""
+        if abs(pitch) < 0.01 and abs(roll) < 0.01:
+            return
+        r = STICK_BOX
+        for cx, cy in (r.topleft, r.topright, r.bottomleft, r.bottomright):
+            dx = 8 if cx == r.left else -8
+            dy = 8 if cy == r.top else -8
+            pygame.draw.lines(s, WHITE, False, [(cx + dx, cy), (cx, cy), (cx, cy + dy)], 2)
+        x = r.centerx + roll * r.w / 2
+        y = r.centery + pitch * r.h / 2
+        pygame.draw.line(s, WHITE, (x - 6, y), (x + 6, y), 2)
+        pygame.draw.line(s, WHITE, (x, y - 6), (x, y + 6), 2)
 
     # --- Speed -------------------------------------------------------------------------
 
@@ -165,7 +187,7 @@ class PFD:
         if y_vmax > r.top:
             draw_barber(s, x, r.top, y_vmax, 8, RED, BLACK)
         y_vls, y_prot, y_amax = y_of(lim.vls), y_of(lim.v_alpha_prot), y_of(lim.v_alpha_max)
-        if y_vls < r.bottom:
+        if y_vls < r.bottom and not sim.state.on_ground:  # low-speed bands only in flight
             pygame.draw.rect(s, AMBER, (x + 2, y_vls, 3, max(0, y_prot - y_vls)))
             draw_barber(s, x, y_prot, y_amax, 8, AMBER, BLACK)
             pygame.draw.rect(s, RED, (x, y_amax, 8, max(0, r.bottom - y_amax)))

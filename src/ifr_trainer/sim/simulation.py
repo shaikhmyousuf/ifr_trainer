@@ -1,25 +1,31 @@
-"""The simulation: pilot inputs -> normal law -> engines + flight model -> systems."""
+"""The simulation: pilot inputs -> flight control computer -> engines + 6-DOF model -> checks."""
 
 import math
 from dataclasses import dataclass
 from enum import Enum
 
-from ..fbw.normal_law import NormalLawLimits, pitch_law, roll_law
+from ..fbw.flight_control import FlightControlComputer
+from ..fbw.normal_law import NormalLawLimits
+from .aero import AeroConfig, Surfaces
 from .aircraft import AircraftData
 from .airport import Airport
 from .atmosphere import cas_from_tas, isa, tas_from_cas
 from .engines import Engines
-from .flight_model import AeroConfig, AircraftState, PointMassModel
+from .flight_model import AircraftState, Environment, SixDofModel
+from .gear import point_height
 from .scenario import Scenario
 from .speeds import SpeedLimits, speed_limits
-from .trim import trim_lever
+from .trim import trim_flight
 from .units import DEG, FPM, FT, KT, NM
+from .vec import mat_t_vec, mat_vec, rotation_matrix
 
 
 @dataclass
 class PilotInputs:
     stick_pitch: float = 0.0  # +1 = full back (nose up)
     stick_roll: float = 0.0  # +1 = full right
+    rudder: float = 0.0  # +1 = full right pedal
+    brakes: float = 0.0  # 0 ... 1
     lever: float = 0.0  # 0 = IDLE ... 1 = TOGA
     flap_lever: int = 0
     gear_down: bool = False
@@ -27,9 +33,15 @@ class PilotInputs:
 
 
 class Phase(Enum):
-    FLYING = "flying"
-    LANDED = "landed"
+    AIRBORNE = "airborne"
+    ON_GROUND = "on ground"
     CRASHED = "crashed"
+
+
+class Severity(Enum):
+    INFO = "info"
+    CAUTION = "caution"
+    CRASH = "crash"
 
 
 def wind_vector(from_deg: float, speed_kt: float) -> tuple[float, float]:
@@ -40,9 +52,11 @@ def wind_vector(from_deg: float, speed_kt: float) -> tuple[float, float]:
 
 class Simulation:
     TREND_TAU_S = 1.0
-    MAX_TOUCHDOWN_FPM = -600.0
-    MAX_TOUCHDOWN_BANK_DEG = 7.0
-    MAX_TOUCHDOWN_PITCH_DEG = 11.5
+    SETTLE_S = 3.0  # ground starts settle on the gear before the clock starts
+    LIFTOFF_S = 0.5  # time with no weight on wheels before the aircraft counts as airborne
+    HARD_LANDING_FPM = -600.0
+    CRASH_LANDING_FPM = -900.0
+    STRUT_STATIC_COMPRESSION_M = 0.25
 
     def __init__(
         self,
@@ -54,10 +68,12 @@ class Simulation:
         self.aircraft = aircraft
         self.airport = airport
         self.scenario = scenario
-        self.law_limits = law_limits or NormalLawLimits()
-        self.model = PointMassModel(aircraft)
+        self.model = SixDofModel(aircraft)
         self.engines = Engines(aircraft.engines)
+        self.fcc = FlightControlComputer(aircraft, self.model.aero, law_limits or NormalLawLimits())
         self.reset()
+
+    # --- Setup -------------------------------------------------------------------------
 
     def reset(self) -> PilotInputs:
         """Put the aircraft at the scenario start, trimmed. Returns the matching pilot inputs."""
@@ -65,96 +81,175 @@ class Simulation:
         rwy = self.airport.runway(sc.runway)
         hdg = math.radians(rwy.heading_deg)
         d = sc.distance_nm * NM
-        h = sc.altitude_ft * FT
         self.mass = sc.mass_kg or self.aircraft.mass_kg
         self.flap_pos = float(sc.flaps)
-        self.gear_pos = 1.0 if sc.gear_down else 0.0
-        self.speedbrake = 0.0
-        self.wind = wind_vector(sc.wind_dir_deg, sc.wind_kt)
-        self.state = AircraftState(
-            x_m=rwy.threshold_x_m - d * math.sin(hdg),
-            y_m=rwy.threshold_y_m - d * math.cos(hdg),
-            h_m=h,
-            tas=tas_from_cas(sc.cas_kt * KT, isa(h)),
-            psi=math.radians(sc.heading_deg if sc.heading_deg is not None else rwy.heading_deg),
-        )
-        self.model.update_derived(self.state, self.aero(), self.mass)
-        lever = trim_lever(self.model, self.engines, self.state, self.aero(), self.mass)
-        self.engines.set_steady(lever)
-        self.phase = Phase.FLYING
+        self.gear_pos = 1.0 if (sc.gear_down or sc.on_ground) else 0.0
+        self.surfaces = Surfaces()
+        wind_e, wind_n = wind_vector(sc.wind_dir_deg, sc.wind_kt)
+        self.wind = (wind_e, wind_n)
+        self.env = Environment(wind_ned=(wind_n, wind_e, 0.0), ground_d=-self.airport.elevation_m)
+        psi = math.radians(sc.heading_deg if sc.heading_deg is not None else rwy.heading_deg)
+        self.state = AircraftState(x_m=rwy.threshold_x_m - d * math.sin(hdg), y_m=rwy.threshold_y_m - d * math.cos(hdg))
+        self.phase = Phase.ON_GROUND if sc.on_ground else Phase.AIRBORNE
         self.message = ""
+        self.severity = Severity.INFO
+        self.message_time = 0.0
+        self._thrust = 0.0
+        self._air_time = 0.0
+        self._landed = False
+
+        if sc.on_ground:
+            lever = 0.0
+            self.inputs = PilotInputs(lever=lever, flap_lever=sc.flaps, gear_down=True, brakes=1.0)
+            self._place_on_ground(psi, sc.ths_deg * DEG)
+        else:
+            gamma = sc.flight_path_deg * DEG
+            h = sc.altitude_ft * FT
+            tas = tas_from_cas(sc.cas_kt * KT, isa(h))
+            trim = trim_flight(self.aircraft, self.model.aero, self.engines, self.aero(), self.mass, h, tas, gamma)
+            s = self.state
+            s.h_m = h
+            s.set_attitude(0.0, trim.alpha + gamma, psi)
+            wind_body = mat_t_vec(rotation_matrix(s.quat), self.env.wind_ned)
+            s.u = tas * math.cos(trim.alpha) + wind_body[0]
+            s.v = wind_body[1]
+            s.w = tas * math.sin(trim.alpha) + wind_body[2]
+            s.nz = math.cos(gamma)
+            self.model.air_data(s, self.env)
+            self.surfaces.ths = trim.ths
+            self.fcc.reset(airborne=True)
+            lever = trim.lever
+            self.inputs = PilotInputs(lever=lever, flap_lever=sc.flaps, gear_down=sc.gear_down)
+        self.engines.set_steady(lever)
+        self._thrust = self.engines.thrust(isa(self.state.h_m), self.state.mach)
         self.time_s = 0.0
         self.speed_trend_kt = 0.0
         self._last_cas_kt = self.cas_kt
-        self.inputs = PilotInputs(lever=lever, flap_lever=sc.flaps, gear_down=sc.gear_down)
         return self.inputs
+
+    def _place_on_ground(self, psi: float, ths: float) -> None:
+        s = self.state
+        main_z = max(leg.z for leg in self.aircraft.gear.legs)
+        s.h_m = self.airport.elevation_m + main_z - self.STRUT_STATIC_COMPRESSION_M
+        s.set_attitude(0.0, 0.0, psi)
+        self.model.air_data(s, self.env)
+        self.surfaces.ths = ths
+        self.fcc.reset(airborne=False)
+        dt = 1.0 / 120.0
+        for _ in range(round(self.SETTLE_S / dt)):
+            self._advance(dt, self.inputs)
 
     def aero(self) -> AeroConfig:
         ac = self.aircraft
         cfg = ac.flap_config_at(self.flap_pos)
-        cd0 = ac.cd0 + cfg.cd0_delta + ac.gear_cd * self.gear_pos + ac.speedbrake_cd * self.speedbrake
-        return AeroConfig(cl0=ac.cl0 + cfg.cl0_delta, cl_max=cfg.cl_max, cd0=cd0)
+        cd0 = ac.cd0 + cfg.cd0_delta + ac.gear.cd * self.gear_pos + ac.speedbrake_cd * self.surfaces.speedbrake
+        return AeroConfig(cl0=ac.cl0 + cfg.cl0_delta, cl_max=cfg.cl_max, cd0=cd0, cm0=ac.aero.cm0 + cfg.cm0_delta)
+
+    # --- Stepping ----------------------------------------------------------------------
 
     def step(self, dt: float, inputs: PilotInputs) -> None:
-        if self.phase is not Phase.FLYING:
+        if self.phase is Phase.CRASHED:
             return
         self.inputs = inputs
-        self._move_surfaces(dt, inputs)
-        s = self.state
-        nz_cmd = pitch_law(inputs.stick_pitch, s.gamma, s.phi, s.theta, self.flap_pos > 0.01, self.law_limits)
-        p_cmd = roll_law(inputs.stick_roll, s.phi, self.law_limits)
-        self.engines.step(dt, inputs.lever)
-        air = isa(s.h_m)
-        thrust = self.engines.thrust(air, s.tas / air.speed_of_sound)
-        self.model.step(s, self.aero(), self.mass, thrust, nz_cmd, p_cmd, self.wind, dt)
+        self._advance(dt, inputs)
         self.time_s += dt
-
         cas = self.cas_kt
         rate = (cas - self._last_cas_kt) / dt
         self._last_cas_kt = cas
         self.speed_trend_kt += (rate * 10.0 - self.speed_trend_kt) * min(dt / self.TREND_TAU_S, 1.0)
-        self._check_ground()
+        self._update_phase(dt)
+
+    def _advance(self, dt: float, inputs: PilotInputs) -> None:
+        s = self.state
+        self._move_surfaces(dt, inputs)
+        cfg = self.aero()
+        cas = self.cas_kt
+        self.fcc.update(dt, inputs, s, self.surfaces, cfg, self.mass, self._thrust, cas, self.flap_pos > 0.01)
+        self.engines.step(dt, inputs.lever)
+        self._thrust = self.engines.thrust(isa(s.h_m), s.mach)
+        self.model.step(
+            s, cfg, self.surfaces, self.mass, self._thrust, inputs.brakes, self.gear_pos >= 1.0, self.env, dt
+        )
 
     def _move_surfaces(self, dt: float, inputs: PilotInputs) -> None:
         ac = self.aircraft
         target = float(min(max(inputs.flap_lever, 0), len(ac.flaps) - 1))
         step = dt / ac.flap_transit_s_per_step
         self.flap_pos += max(-step, min(step, target - self.flap_pos))
-        gear_target = 1.0 if inputs.gear_down else 0.0
-        step = dt / ac.gear_transit_s
+        on_ground = self.state.on_ground
+        gear_target = 1.0 if (inputs.gear_down or on_ground) else 0.0  # no retraction on the ground
+        step = dt / ac.gear.transit_s
         self.gear_pos += max(-step, min(step, gear_target - self.gear_pos))
-        self.speedbrake += max(-dt, min(dt, inputs.speedbrake - self.speedbrake))
+        sf = self.surfaces
+        sf.speedbrake += max(-dt, min(dt, inputs.speedbrake - sf.speedbrake))
+        # Ground spoilers: extend on the ground with the lever at idle above taxi speed.
+        idle = inputs.lever <= ac.engines.detents["IDLE"] + 0.02
+        deploy = on_ground and idle and self.groundspeed_kt > 20.0
+        sf.ground_spoiler += max(-dt, min(dt, (1.0 if deploy else 0.0) - sf.ground_spoiler))
 
-    def _check_ground(self) -> None:
-        s = self.state
-        if s.h_m > self.airport.elevation_m:
-            return
-        vs = self.vs_fpm
-        s.h_m = self.airport.elevation_m
-        rwy = self.airport.runway_at(s.x_m, s.y_m)
-        problems = []
-        if rwy is None:
-            problems.append("off the runway")
-        if self.gear_pos < 1.0:
-            problems.append("gear not down")
-        if vs < self.MAX_TOUCHDOWN_FPM:
-            problems.append(f"sink rate {vs:.0f} fpm")
-        if abs(s.phi) > self.MAX_TOUCHDOWN_BANK_DEG * DEG:
-            problems.append(f"bank {math.degrees(s.phi):.0f} deg")
-        if s.theta > self.MAX_TOUCHDOWN_PITCH_DEG * DEG:
-            problems.append("tail strike")
-        elif s.theta < 0.0:
-            problems.append("nose gear first")
-        if problems:
+    # --- Phase, touchdown and damage ---------------------------------------------------
+
+    def _set_message(self, text: str, severity: Severity) -> None:
+        self.message = text
+        self.severity = severity
+        self.message_time = self.time_s
+        if severity is Severity.CRASH:
             self.phase = Phase.CRASHED
-            self.message = "CRASH: " + ", ".join(problems)
-        else:
-            along, cross = rwy.to_runway_frame(s.x_m, s.y_m)
-            self.phase = Phase.LANDED
-            self.message = (
-                f"LANDED RWY {rwy.ident}: {vs:.0f} fpm, {along:.0f} m past threshold, "
-                f"{cross:+.1f} m from centreline"
-            )
+
+    def _update_phase(self, dt: float) -> None:
+        s = self.state
+        rot = rotation_matrix(s.quat)
+        for name, point in self.aircraft.gear.strike_points.items():
+            if point_height(point, rot, s.pos_ned, self.env.ground_d) < 0.0:
+                self._set_message(f"CRASH: {name}", Severity.CRASH)
+                return
+
+        if not s.on_ground:
+            self._air_time += dt
+            if self.phase is Phase.ON_GROUND and self._air_time > self.LIFTOFF_S:
+                self.phase = Phase.AIRBORNE
+            return
+
+        if self.phase is Phase.AIRBORNE:
+            self._touchdown(rot)
+            if self.phase is Phase.CRASHED:
+                return
+        self.phase = Phase.ON_GROUND
+        self._air_time = 0.0
+        if self.groundspeed_kt > 1.0 and not self._mains_on_runway(rot):
+            self._set_message("CRASH: runway excursion", Severity.CRASH)
+        elif self._landed and self.groundspeed_kt < 1.0:
+            rwy = self.airport.runway(self._landing_runway)
+            along, _ = rwy.to_runway_frame(s.x_m, s.y_m)
+            self._landed = False
+            self._set_message(f"{self.message}. Stopped {rwy.length_m - along:.0f} m before the runway end", self.severity)
+
+    def _mains_on_runway(self, rot) -> bool:
+        s = self.state
+        for leg in self.aircraft.gear.legs:
+            if leg.name == "nose":
+                continue
+            n, e, _ = mat_vec(rot, leg.position)
+            if self.airport.runway_at(s.x_m + e, s.y_m + n) is None:
+                return False
+        return True
+
+    def _touchdown(self, rot) -> None:
+        s = self.state
+        vs = self.vs_fpm
+        rwy = self.airport.runway_at(s.x_m, s.y_m)
+        if rwy is None or not self._mains_on_runway(rot):
+            self._set_message(f"CRASH: touched down off the runway at {vs:.0f} fpm", Severity.CRASH)
+            return
+        along, cross = rwy.to_runway_frame(s.x_m, s.y_m)
+        details = f"{vs:.0f} fpm, {along:.0f} m past threshold {rwy.ident}, {cross:+.1f} m from centreline"
+        if vs < self.CRASH_LANDING_FPM:
+            self._set_message(f"CRASH: {details}", Severity.CRASH)
+            return
+        hard = vs < self.HARD_LANDING_FPM
+        self._landed = True
+        self._landing_runway = rwy.ident
+        self._set_message(("HARD LANDING: " if hard else "TOUCHDOWN: ") + details, Severity.CAUTION if hard else Severity.INFO)
 
     # --- Derived values for displays -------------------------------------------------
 
@@ -168,11 +263,15 @@ class Simulation:
 
     @property
     def agl_ft(self) -> float:
-        return (self.state.h_m - self.airport.elevation_m) / FT
+        """Radio altitude: height of the main wheels above the ground."""
+        s = self.state
+        rot = rotation_matrix(s.quat)
+        mains = [leg for leg in self.aircraft.gear.legs if leg.name != "nose"]
+        return min(point_height(leg.position, rot, s.pos_ned, self.env.ground_d) for leg in mains) / FT
 
     @property
     def vs_fpm(self) -> float:
-        return self.state.tas * math.sin(self.state.gamma) / FPM
+        return -self.state.v_ned[2] / FPM
 
     @property
     def heading_deg(self) -> float:
@@ -180,13 +279,15 @@ class Simulation:
 
     @property
     def ground_velocity(self) -> tuple[float, float]:
-        s = self.state
-        horizontal = s.tas * math.cos(s.gamma)
-        return horizontal * math.sin(s.psi) + self.wind[0], horizontal * math.cos(s.psi) + self.wind[1]
+        """(east, north) in m/s."""
+        vn, ve, _ = self.state.v_ned
+        return ve, vn
 
     @property
     def track_deg(self) -> float:
         ve, vn = self.ground_velocity
+        if math.hypot(ve, vn) < 1.0:
+            return self.heading_deg
         return math.degrees(math.atan2(ve, vn)) % 360.0
 
     @property

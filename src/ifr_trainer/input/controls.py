@@ -10,6 +10,8 @@ from ..sim.simulation import PilotInputs
 
 THROTTLE_PICKUP = 0.05  # axis travel needed before a hardware throttle takes over
 DETENT_SNAP = 0.015
+MOUSE_STICK_RANGE_PX = 150.0  # drag distance for full stick deflection
+MOUSE_WHEEL_LEVER_STEP = 0.02
 
 
 @dataclass(frozen=True)
@@ -21,6 +23,8 @@ class JoystickMapping:
     roll_invert: bool = False
     throttle_axis: int = 2
     throttle_invert: bool = True
+    rudder_axis: int = -1
+    rudder_invert: bool = False
     deadzone: float = 0.05
     expo: float = 0.3
     buttons: dict[str, int] = field(default_factory=dict)
@@ -44,6 +48,7 @@ def shape_axis(value: float, deadzone: float, expo: float) -> float:
 class Controls:
     KEY_STICK_RATE = 3.0  # stick travel per second while an arrow key is held
     KEY_STICK_RETURN = 6.0
+    KEY_STICK_LIMIT = 0.5  # arrow keys alone; hold Shift for full deflection
     KEY_LEVER_RATE = 0.25
 
     def __init__(self, mapping: JoystickMapping, detents: dict[str, float], flap_positions: int):
@@ -56,6 +61,8 @@ class Controls:
         self._throttle_ref = 0.0
         self._key_pitch = 0.0
         self._key_roll = 0.0
+        self._key_rudder = 0.0
+        self._mouse_anchor: tuple[int, int] | None = None
         self.open_joystick()
 
     def open_joystick(self) -> None:
@@ -85,6 +92,12 @@ class Controls:
         elif event.type == pygame.JOYDEVICEREMOVED and self.joystick is not None:
             if event.instance_id == self.joystick.get_instance_id():
                 self.joystick = None
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            self._mouse_anchor = event.pos
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            self._mouse_anchor = None
+        elif event.type == pygame.MOUSEWHEEL:
+            self._set_lever_manually(self.inputs.lever + event.y * MOUSE_WHEEL_LEVER_STEP)
         elif event.type == pygame.JOYBUTTONDOWN:
             for action, button in self.mapping.buttons.items():
                 if button == event.button:
@@ -102,7 +115,7 @@ class Controls:
                 return self._action(simple[key])
             names = {pygame.K_1: "IDLE", pygame.K_2: "CL", pygame.K_3: "MCT", pygame.K_4: "TOGA"}
             if key in names:
-                self._set_lever_from_keyboard(self.detents[names[key]])
+                self._set_lever_manually(self.detents[names[key]])
         return None
 
     def _action(self, action: str) -> str | None:
@@ -119,7 +132,7 @@ class Controls:
             return action
         return None
 
-    def _set_lever_from_keyboard(self, lever: float) -> None:
+    def _set_lever_manually(self, lever: float) -> None:
         self.inputs.lever = min(max(lever, 0.0), 1.0)
         self.throttle_live = False
         self._throttle_ref = self._raw_throttle() or 0.0
@@ -136,25 +149,41 @@ class Controls:
         v = self.joystick.get_axis(index)
         return shape_axis(-v if invert else v, self.mapping.deadzone, self.mapping.expo)
 
-    def _key_axis(self, current: float, negative: bool, positive: bool, dt: float) -> float:
+    def _key_axis(self, current: float, negative: bool, positive: bool, limit: float, dt: float) -> float:
         if positive != negative:
             target = 1.0 if positive else -1.0
-            return max(-1.0, min(1.0, current + target * self.KEY_STICK_RATE * dt))
+            return max(-limit, min(limit, current + target * self.KEY_STICK_RATE * dt))
         step = self.KEY_STICK_RETURN * dt
         return 0.0 if abs(current) <= step else current - step * (1 if current > 0 else -1)
 
     def poll(self, dt: float) -> PilotInputs:
         keys = pygame.key.get_pressed()
         m = self.mapping
-        self._key_pitch = self._key_axis(self._key_pitch, keys[pygame.K_UP], keys[pygame.K_DOWN], dt)
-        self._key_roll = self._key_axis(self._key_roll, keys[pygame.K_LEFT], keys[pygame.K_RIGHT], dt)
+        limit = 1.0 if pygame.key.get_mods() & pygame.KMOD_SHIFT else self.KEY_STICK_LIMIT
+        self._key_pitch = self._key_axis(self._key_pitch, keys[pygame.K_UP], keys[pygame.K_DOWN], limit, dt)
+        self._key_roll = self._key_axis(self._key_roll, keys[pygame.K_LEFT], keys[pygame.K_RIGHT], limit, dt)
+        self._key_rudder = self._key_axis(self._key_rudder, keys[pygame.K_z], keys[pygame.K_x], limit, dt)
+        mouse_pitch = mouse_roll = 0.0
+        if self._mouse_anchor is not None:
+            # Spring-loaded like a sidestick: deflection follows the drag, centres on release.
+            x, y = pygame.mouse.get_pos()
+            mouse_roll = (x - self._mouse_anchor[0]) / MOUSE_STICK_RANGE_PX
+            mouse_pitch = (y - self._mouse_anchor[1]) / MOUSE_STICK_RANGE_PX
         i = self.inputs
-        i.stick_pitch = max(-1.0, min(1.0, self._axis(m.pitch_axis, m.pitch_invert) + self._key_pitch))
-        i.stick_roll = max(-1.0, min(1.0, self._axis(m.roll_axis, m.roll_invert) + self._key_roll))
+        i.stick_pitch = max(-1.0, min(1.0, self._axis(m.pitch_axis, m.pitch_invert) + self._key_pitch + mouse_pitch))
+        i.stick_roll = max(-1.0, min(1.0, self._axis(m.roll_axis, m.roll_invert) + self._key_roll + mouse_roll))
+        i.rudder = max(-1.0, min(1.0, self._axis(m.rudder_axis, m.rudder_invert) + self._key_rudder))
+        brake_button = m.buttons.get("brakes", -1)
+        joystick_brakes = (
+            self.joystick is not None
+            and 0 <= brake_button < self.joystick.get_numbuttons()
+            and self.joystick.get_button(brake_button)
+        )
+        i.brakes = 1.0 if (keys[pygame.K_SPACE] or joystick_brakes) else 0.0
 
         if keys[pygame.K_w] or keys[pygame.K_s]:
             delta = (self.KEY_LEVER_RATE if keys[pygame.K_w] else -self.KEY_LEVER_RATE) * dt
-            self._set_lever_from_keyboard(i.lever + delta)
+            self._set_lever_manually(i.lever + delta)
         raw = self._raw_throttle()
         if raw is not None:
             if not self.throttle_live and abs(raw - self._throttle_ref) > THROTTLE_PICKUP:

@@ -1,18 +1,22 @@
-"""Point-mass flight model in wind axes (milestone 1).
+"""Six-degree-of-freedom rigid-body flight model.
 
-The aircraft is a point with velocity along its flight path. The control law
-commands a load factor and a roll rate; the airframe follows them with a short
-lag, limited by the lift the wing can produce (CLmax), so the aircraft can stall.
+World frame: x east, y north, h up (metres) for positions; NED for the attitude
+quaternion. Body velocities (u, v, w) are relative to the ground; the aerodynamics
+use the air-relative velocity (ground velocity minus a constant wind).
 """
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
+from .aero import AeroConfig, AeroModel, Surfaces
 from .aircraft import AircraftData
-from .atmosphere import Air, isa
+from .atmosphere import isa
+from .gear import NO_GEAR_FORCES, GearForces, gear_forces
 from .units import G
+from .vec import Quat, euler_from_quat, mat_t_vec, mat_vec, quat_from_euler, quat_integrate, rotation_matrix
 
-MAX_GAMMA = math.radians(80.0)
+ALPHA_DOT_TAU_S = 0.05
+MIN_AERO_TAS = 1.0
 
 
 @dataclass
@@ -20,95 +24,140 @@ class AircraftState:
     x_m: float = 0.0  # east of origin
     y_m: float = 0.0  # north of origin
     h_m: float = 0.0  # MSL
-    tas: float = 100.0  # m/s
-    gamma: float = 0.0  # flight path angle, rad
-    psi: float = 0.0  # heading, rad (no sideslip in this model)
-    phi: float = 0.0  # bank, rad
-    roll_rate: float = 0.0  # rad/s
-    nz: float = 1.0  # load factor normal to the flight path
+    u: float = 0.0  # body-axis ground velocity, m/s
+    v: float = 0.0
+    w: float = 0.0
+    quat: Quat = (1.0, 0.0, 0.0, 0.0)
+    p: float = 0.0  # body rates, rad/s
+    q: float = 0.0
+    r: float = 0.0
     # Derived each step.
-    alpha: float = 0.0
+    phi: float = 0.0
     theta: float = 0.0
+    psi: float = 0.0
+    tas: float = 0.0
+    alpha: float = 0.0
+    beta: float = 0.0
+    alpha_dot: float = 0.0
+    gamma: float = 0.0
     mach: float = 0.0
-    lift_limited: bool = False
+    dynamic_pressure: float = 0.0
+    height_m: float = 1000.0  # CG height above the ground
+    nz: float = 1.0  # specific force along -z body, in g (what an accelerometer reads)
+    ny: float = 0.0  # specific force along +y body, in g
+    nx: float = 0.0  # specific force along +x body, in g
+    v_ned: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    lift_limited: bool = False  # angle of attack beyond the stall
+    gear: GearForces = field(default=NO_GEAR_FORCES)
+
+    @property
+    def n_path(self) -> float:
+        """Specific force normal to the flight path (lift plus the thrust component), in g."""
+        return self.nz * math.cos(self.alpha) + self.nx * math.sin(self.alpha)
+
+    @property
+    def on_ground(self) -> bool:
+        return self.gear.main_on_ground
+
+    @property
+    def pos_ned(self) -> tuple[float, float, float]:
+        return (self.y_m, self.x_m, -self.h_m)
+
+    def set_attitude(self, phi: float, theta: float, psi: float) -> None:
+        self.quat = quat_from_euler(phi, theta, psi)
+        self.phi, self.theta, self.psi = euler_from_quat(self.quat)
 
 
 @dataclass(frozen=True)
-class AeroConfig:
-    cl0: float
-    cl_max: float
-    cd0: float
+class Environment:
+    wind_ned: tuple[float, float, float]
+    ground_d: float  # NED down coordinate of the ground (minus field elevation)
 
 
-@dataclass(frozen=True)
-class Forces:
-    air: Air
-    dynamic_pressure: float
-    cl: float
-    drag: float
-    nz_available: float
-
-
-class PointMassModel:
-    NZ_TAU_S = 0.5  # stands in for short-period response + C* law
-    ROLL_TAU_S = 0.25
-    MIN_TAS = 15.0
-
+class SixDofModel:
     def __init__(self, aircraft: AircraftData):
         self.ac = aircraft
+        self.aero = AeroModel(aircraft)
 
-    def forces(self, s: AircraftState, aero: AeroConfig, mass: float, nz: float | None = None) -> Forces:
-        """Aerodynamic forces at the current state (or at load factor ``nz``)."""
-        ac = self.ac
+    def air_data(self, s: AircraftState, env: Environment, dt: float | None = None) -> None:
+        """Update air-relative quantities and Euler angles from the primary state."""
+        rot = rotation_matrix(s.quat)
+        s.phi, s.theta, s.psi = euler_from_quat(s.quat)
+        wb = mat_t_vec(rot, env.wind_ned)
+        ua, va, wa = s.u - wb[0], s.v - wb[1], s.w - wb[2]
+        s.tas = math.sqrt(ua * ua + va * va + wa * wa)
+        if s.tas > MIN_AERO_TAS:
+            alpha = math.atan2(wa, ua)
+            if dt:
+                rate = (alpha - s.alpha) / dt
+                s.alpha_dot += (rate - s.alpha_dot) * min(dt / ALPHA_DOT_TAU_S, 1.0)
+            s.alpha = alpha
+            s.beta = math.asin(max(-1.0, min(1.0, va / s.tas)))
+        else:
+            s.alpha = s.beta = s.alpha_dot = 0.0
         air = isa(s.h_m)
-        q = 0.5 * air.density * s.tas**2
-        qs = q * ac.wing_area_m2
-        weight = mass * G
-        cl = (s.nz if nz is None else nz) * weight / qs
-        mach = s.tas / air.speed_of_sound
-        wave = 20.0 * (mach - ac.mach_crit) ** 4 if mach > ac.mach_crit else 0.0
-        cd = aero.cd0 + ac.induced_drag_k * cl * cl + wave
-        return Forces(air, q, cl, cd * qs, aero.cl_max * qs / weight)
-
-    def update_derived(self, s: AircraftState, aero: AeroConfig, mass: float) -> Forces:
-        f = self.forces(s, aero, mass)
-        s.alpha = (f.cl - aero.cl0) / self.ac.cl_alpha_per_rad
-        s.theta = s.gamma + s.alpha * math.cos(s.phi)
-        s.mach = s.tas / f.air.speed_of_sound
-        return f
+        s.mach = s.tas / air.speed_of_sound
+        s.dynamic_pressure = 0.5 * air.density * s.tas * s.tas
+        s.height_m = s.h_m + env.ground_d
+        s.v_ned = mat_vec(rot, (s.u, s.v, s.w))
+        s.gamma = math.asin(max(-1.0, min(1.0, -s.v_ned[2] / s.tas))) if s.tas > MIN_AERO_TAS else 0.0
 
     def step(
         self,
         s: AircraftState,
-        aero: AeroConfig,
+        cfg: AeroConfig,
+        surfaces: Surfaces,
         mass: float,
         thrust: float,
-        nz_cmd: float,
-        roll_rate_cmd: float,
-        wind_en: tuple[float, float],
+        brakes: float,
+        gear_down: bool,
+        env: Environment,
         dt: float,
     ) -> None:
-        f = self.forces(s, aero, mass)
-        target = min(max(nz_cmd, -0.5 * f.nz_available), f.nz_available)
-        s.lift_limited = nz_cmd > f.nz_available
-        s.nz += (target - s.nz) * min(dt / self.NZ_TAU_S, 1.0)
-        s.nz = min(s.nz, f.nz_available)
-        drag = self.forces(s, aero, mass).drag
+        ac = self.ac
+        rot = rotation_matrix(s.quat)
+        qs = s.dynamic_pressure * ac.wing_area_m2
+        c = self.aero.coefficients(cfg, s.alpha, s.beta, s.alpha_dot, s.p, s.q, s.r, s.tas, s.mach, surfaces, s.height_m)
+        s.lift_limited = s.alpha > c.alpha_stall
 
-        s.roll_rate += (roll_rate_cmd - s.roll_rate) * min(dt / self.ROLL_TAU_S, 1.0)
-        s.phi += s.roll_rate * dt
+        # Wind-axis lift/drag to body axes; side force is already in body axes.
+        lift, drag, side = c.cl * qs, c.cd * qs, c.cy * qs
+        ca, sa, cb, sb = math.cos(s.alpha), math.sin(s.alpha), math.cos(s.beta), math.sin(s.beta)
+        fx = -drag * ca * cb + lift * sa + thrust
+        fy = side - drag * sb
+        fz = -drag * sa * cb - lift * ca
+        mx = qs * ac.span_m * c.roll
+        my = qs * ac.mac_m * c.pitch + ac.engines.z_m * thrust
+        mz = qs * ac.span_m * c.yaw
 
-        cos_g = math.cos(s.gamma)
-        dv = (thrust - drag) / mass - G * math.sin(s.gamma)
-        dgamma = G / s.tas * (s.nz * math.cos(s.phi) - cos_g)
-        dpsi = G * s.nz * math.sin(s.phi) / (s.tas * cos_g)
+        if gear_down:
+            s.gear = gear_forces(
+                ac.gear, rot, s.pos_ned, s.v_ned, (s.p, s.q, s.r), s.psi, surfaces.nosewheel, brakes, env.ground_d
+            )
+            gf, gm = s.gear.force, s.gear.moment
+            fx, fy, fz = fx + gf[0], fy + gf[1], fz + gf[2]
+            mx, my, mz = mx + gm[0], my + gm[1], mz + gm[2]
+        else:
+            s.gear = NO_GEAR_FORCES
+        s.nz = -fz / (mass * G)
+        s.ny = fy / (mass * G)
+        s.nx = fx / (mass * G)
 
-        horizontal = s.tas * cos_g
-        s.x_m += (horizontal * math.sin(s.psi) + wind_en[0]) * dt
-        s.y_m += (horizontal * math.cos(s.psi) + wind_en[1]) * dt
-        s.h_m += s.tas * math.sin(s.gamma) * dt
+        grav = mat_t_vec(rot, (0.0, 0.0, mass * G))
+        fx, fy, fz = fx + grav[0], fy + grav[1], fz + grav[2]
 
-        s.tas = max(s.tas + dv * dt, self.MIN_TAS)
-        s.gamma = min(max(s.gamma + dgamma * dt, -MAX_GAMMA), MAX_GAMMA)
-        s.psi = (s.psi + dpsi * dt) % math.tau
-        self.update_derived(s, aero, mass)
+        inertia = ac.inertia_for(mass)
+        p, q, r = s.p, s.q, s.r
+        s.u += (fx / mass + r * s.v - q * s.w) * dt
+        s.v += (fy / mass + p * s.w - r * s.u) * dt
+        s.w += (fz / mass + q * s.u - p * s.v) * dt
+        s.p += (mx + (inertia.iyy - inertia.izz) * q * r) / inertia.ixx * dt
+        s.q += (my + (inertia.izz - inertia.ixx) * p * r) / inertia.iyy * dt
+        s.r += (mz + (inertia.ixx - inertia.iyy) * p * q) / inertia.izz * dt
+
+        s.quat = quat_integrate(s.quat, s.p, s.q, s.r, dt)
+        vn, ve, vd = mat_vec(rotation_matrix(s.quat), (s.u, s.v, s.w))
+        s.x_m += ve * dt
+        s.y_m += vn * dt
+        s.h_m -= vd * dt
+        self.air_data(s, env, dt)

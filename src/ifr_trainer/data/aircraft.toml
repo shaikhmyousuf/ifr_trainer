@@ -1,8 +1,11 @@
 # Approximate A320-200 data, tuned for handling, not certified performance.
+# Body axes: x forward, y right, z down, origin at the centre of gravity (CG).
+# Control signs are pilot sense: + elevator/THS = nose up, + aileron = roll right, + rudder = nose right.
 name = "A320 (approximate)"
 mass_kg = 64000.0
 wing_area_m2 = 122.6
 span_m = 35.8
+mac_m = 4.19
 oswald = 0.85
 cl_alpha_per_rad = 5.2
 cl0 = 0.20
@@ -12,10 +15,103 @@ vmo_kt = 350.0
 mmo = 0.82
 speedbrake_cd = 0.025
 
+[inertia]             # kg m^2 at mass_kg, scaled linearly with mass
+ixx = 1.24e6
+iyy = 3.27e6
+izz = 5.18e6
+
+[aero]
+cl_q = 4.0
+cl_elevator = -0.30
+cl_ths = -0.60
+cl_min = -0.8
+cl_post_stall_slope = -2.0
+cm0 = 0.02
+cm_alpha = -0.9
+cm_q = -32.0
+cm_alphadot = -12.0
+cm_elevator = 0.8
+cm_ths = 2.6
+cy_beta = -0.9
+cy_rudder = -0.18
+roll_beta = -0.10
+roll_p = -0.45
+roll_r = 0.15
+roll_aileron = 0.10
+roll_rudder = -0.005
+yaw_beta = 0.12
+yaw_p = -0.03
+yaw_r = -0.25
+yaw_aileron = -0.005
+yaw_rudder = 0.10
+cd_beta = 0.3
+speedbrake_cl = -0.10
+ground_spoiler_cl = -0.6
+ground_spoiler_cd = 0.08
+
+[controls]
+elevator_up_deg = 30.0
+elevator_down_deg = 17.0
+aileron_deg = 25.0
+rudder_deg = 30.0
+rudder_limit_start_kt = 160.0     # rudder travel limiter: full travel below this speed...
+rudder_limit_end_kt = 380.0
+rudder_limit_high_speed_deg = 3.5  # ...reducing to this at rudder_limit_end_kt
+ths_up_deg = 13.5
+ths_down_deg = 4.0
+ths_rate_deg_s = 0.7
+elevator_rate_deg_s = 40.0
+aileron_rate_deg_s = 50.0
+rudder_rate_deg_s = 40.0
+nosewheel_pedal_deg = 6.0          # pedal steering authority, fading to zero at nosewheel_fade_kt
+nosewheel_fade_kt = 130.0
+
 [gear]
 cd = 0.020
 vle_kt = 280.0
 transit_s = 10.0
+rolling_friction = 0.015
+brake_friction = 0.5
+lateral_friction = 0.7
+
+[[gear.legs]]
+name = "nose"
+x = 11.4
+y = 0.0
+z = 2.9
+stiffness = 2.0e5
+damping = 4.2e4
+steerable = true
+braked = false
+
+[[gear.legs]]
+name = "left"
+x = -1.2
+y = -3.8
+z = 2.9
+stiffness = 9.4e5
+damping = 2.0e5
+steerable = false
+braked = true
+
+[[gear.legs]]
+name = "right"
+x = -1.2
+y = 3.8
+z = 2.9
+stiffness = 9.4e5
+damping = 2.0e5
+steerable = false
+braked = true
+
+# Points that must never touch the ground (x, y, z body metres).
+[gear.strike_points]
+"tail strike" = [-18.0, 0.0, -0.52]
+"left engine strike" = [3.0, -5.75, 2.45]
+"right engine strike" = [3.0, 5.75, 2.45]
+"left wingtip strike" = [-6.0, -17.9, -1.5]
+"right wingtip strike" = [-6.0, 17.9, -1.5]
+"belly landing" = [0.0, 0.0, 2.0]
 
 [flaps]
 transit_s_per_step = 6.0
@@ -26,29 +122,33 @@ name = "0"
 cl0_delta = 0.0
 cl_max = 1.40
 cd0_delta = 0.0
+cm0_delta = 0.0
 vls_factor = 1.28
 
 [[flaps.configs]]
 name = "1"
-cl0_delta = 0.25
+cl0_delta = 0.47
 cl_max = 1.85
 cd0_delta = 0.008
+cm0_delta = -0.02
 vfe_kt = 230.0
 vls_factor = 1.23
 
 [[flaps.configs]]
 name = "2"
-cl0_delta = 0.55
+cl0_delta = 0.70
 cl_max = 2.20
 cd0_delta = 0.020
+cm0_delta = -0.04
 vfe_kt = 200.0
 vls_factor = 1.23
 
 [[flaps.configs]]
 name = "3"
-cl0_delta = 0.70
+cl0_delta = 0.82
 cl_max = 2.40
 cd0_delta = 0.030
+cm0_delta = -0.06
 vfe_kt = 185.0
 vls_factor = 1.23
 
@@ -57,12 +157,14 @@ name = "FULL"
 cl0_delta = 0.90
 cl_max = 2.69
 cd0_delta = 0.042
+cm0_delta = -0.08
 vfe_kt = 177.0
 vls_factor = 1.23
 
 [engines]
 count = 2
 static_thrust_n = 120000.0        # per engine, sea level
+z_m = 1.2                         # thrust line below the CG (thrust pitches the nose up)
 n1_idle = 20.5
 n1_max = 96.0                     # N1 that gives full rated thrust
 idle_thrust_fraction = 0.03
