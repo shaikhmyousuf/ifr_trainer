@@ -85,6 +85,9 @@ Vapp on a 3° glidepath, approach N1 around 55–60 %, and VLS in CONF FULL arou
    auto-trimming THS and automatic turn coordination.
 3. **Normal law and protections**: full high angle-of-attack protection and alpha
    floor, high-speed protection, and alternate/direct law for failure training.
+   *Done so far:* C* pitch law (load factor blended with pitch rate, crossover
+   120 m/s) with bank compensation feedforward; auto-trim freezes beyond 33° of bank,
+   outside 0.5–1.25 g and at the angle-of-attack limit.
 4. **Navigation**. *Done:* VOR (radial, TO/FROM, 5°/dot), DME (slant range),
    ILS (localizer full scale 105 m at the threshold, glideslope 0.35°/dot, ICAO
    coverage), ADF; line-of-sight range and the VOR cone of confusion. ND in ROSE

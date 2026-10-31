@@ -65,6 +65,26 @@ def test_neutral_stick_holds_bank_and_flight_path_in_turn(make_sim):
     assert abs(math.degrees(sim.state.beta)) < 0.5  # turn coordinated without pedals
 
 
+@pytest.mark.parametrize("cas_kt, flaps", [(220.0, 0), (200.0, 1), (135.0, 4)])
+def test_pitch_settles_after_stick_release(make_sim, cas_kt, flaps):
+    # Releasing the stick after a pull must not start a pitch oscillation (at approach
+    # speeds the old load factor loop limit-cycled against the elevator rate limit),
+    # and the C* law keeps the nose close to where the pilot left it.
+    sim = make_sim(cas_kt=cas_kt, flaps=flaps)
+    sim.inputs.stick_pitch = 0.5
+    fly(sim, 2)
+    sim.inputs.stick_pitch = 0.0
+    fly(sim, 0.7)  # pitch rate has stopped
+    released_pitch = math.degrees(sim.state.theta)
+    fly(sim, 3.3)
+    rates = []
+    for _ in range(6 * 120):
+        sim.step(1 / 120, sim.inputs)
+        rates.append(math.degrees(sim.state.q))
+    assert max(rates) - min(rates) < 0.5
+    assert released_pitch - math.degrees(sim.state.theta) < 2.0
+
+
 def test_bank_beyond_33_returns_to_33(make_sim):
     sim = make_sim()
     sim.inputs.stick_roll = 1.0

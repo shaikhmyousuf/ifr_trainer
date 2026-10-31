@@ -25,8 +25,7 @@ def _toward(value: float, target: float, max_step: float) -> float:
 
 
 class FlightControlComputer:
-    K_NZ = 2.0  # 1/s: load factor error -> extra pitch rate demand...
-    MAX_NZ_PITCH_RATE = 3.0 * DEG  # ...capped, so low-speed pitch response stays gentle
+    C_STAR_VCO = 120.0  # m/s: C* crossover speed, where load factor and pitch rate weigh equally
     K_Q = 3.0  # 1/s: pitch rate error -> pitch acceleration demand
     K_P = 5.0  # 1/s: roll rate error -> roll acceleration demand
     K_BETA = 1.0  # 1/s: sideslip error -> yaw rate demand
@@ -38,6 +37,7 @@ class FlightControlComputer:
         self.ac = aircraft
         self.aero = aero
         self.limits = limits
+        self.alpha_limited = False
 
     def update(
         self,
@@ -67,8 +67,9 @@ class FlightControlComputer:
             surfaces.rudder, max(-rudder_max, min(rudder_max, rudder)), lim.rudder_rate_deg_s * DEG * dt
         )
 
-        # Auto-trim: the THS offloads the elevator, frozen beyond 33 degrees of bank.
-        if abs(s.phi) < self.limits.neutral_bank:
+        # Auto-trim: the THS offloads the elevator. Frozen beyond 33 degrees of bank, outside
+        # 0.5 to 1.25 g, and while the high angle-of-attack limit holds the stick back.
+        if abs(s.phi) < self.limits.neutral_bank and 0.5 < s.n_path < 1.25 and not self.alpha_limited:
             rate = lim.ths_rate_deg_s * DEG
             ths_rate = max(-rate, min(rate, self.TRIM_GAIN * surfaces.elevator))
             surfaces.ths = max(-lim.ths_down_deg * DEG, min(lim.ths_up_deg * DEG, surfaces.ths + ths_rate * dt))
@@ -90,15 +91,24 @@ class FlightControlComputer:
         p, q, r = s.p, s.q, s.r
         sin_phi, cos_phi = math.sin(s.phi), math.cos(s.phi)
 
-        # Pitch: load factor command -> pitch rate -> pitch acceleration.
+        # Pitch: C* command -> pitch rate -> pitch acceleration. C* blends load factor
+        # with pitch rate, C* = nz + (VCO/g) q. The pitch rate below makes the measured C*
+        # equal the stick's demand; in steady flight that gives the stick's load factor,
+        # and at stick neutral it holds the flight path. Pitch rate dominates the blend
+        # at low speed, so the nose stays close to where the pilot leaves it.
         nz_cmd = pitch_law(inputs.stick_pitch, s.gamma, s.phi, s.theta, flaps_extended, self.limits)
         dn_dalpha = max(ac.cl_alpha_per_rad * qs / (mass * G), 0.5)
         alpha_max = self.aero.alpha_stall(cfg) - self.ALPHA_PROT_MARGIN
         n = s.n_path
-        nz_cmd = min(nz_cmd, n + (alpha_max - s.alpha) * dn_dalpha)
-        q_feedback = self.K_NZ * (nz_cmd - n) / dn_dalpha
-        q_feedback = max(-self.MAX_NZ_PITCH_RATE, min(self.MAX_NZ_PITCH_RATE, q_feedback))
-        q_cmd = G / v * (nz_cmd - math.cos(s.gamma) * cos_phi) + q_feedback
+        alpha_room = n + (alpha_max - s.alpha) * dn_dalpha
+        self.alpha_limited = nz_cmd > alpha_room
+        nz_cmd = min(nz_cmd, alpha_room)
+        q_cmd = G / v * (nz_cmd - math.cos(s.gamma) * cos_phi) + G / self.C_STAR_VCO * (nz_cmd - n)
+        if abs(s.phi) < self.limits.neutral_bank:
+            # Bank compensation feedforward: raise alpha as the bank grows, before the
+            # load factor falls short, so rolling into a turn does not sag the flight path.
+            phi_dot = p + (q * sin_phi + r * cos_phi) * math.tan(s.theta)
+            q_cmd += math.cos(s.gamma) * sin_phi / cos_phi**2 * phi_dot / dn_dalpha
         m_req = inertia.iyy * self.K_Q * (q_cmd - q) - (inertia.izz - inertia.ixx) * p * r
 
         # Roll: roll rate command (Euler bank rate) -> body roll rate -> roll acceleration.
