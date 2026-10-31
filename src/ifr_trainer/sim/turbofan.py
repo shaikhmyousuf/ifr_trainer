@@ -1,15 +1,54 @@
-"""Engine model: lever -> N1 command, spool dynamics, N1 -> thrust with altitude/Mach lapse."""
+"""Turbofan engines: lever -> N1 command, spool dynamics, N1 -> thrust with altitude/Mach lapse.
 
-from .aircraft import EngineData
+Shared by jet aircraft modules; each supplies its own ``[engines]`` data.
+"""
+
+from dataclasses import dataclass
+
 from .atmosphere import RHO0, Air
 
 
-class Engines:
+@dataclass(frozen=True)
+class TurbofanData:
+    count: int
+    static_thrust_n: float
+    z_m: float
+    n1_idle: float
+    n1_max: float
+    idle_thrust_fraction: float
+    thrust_exponent: float
+    density_exponent: float
+    mach_lapse: float
+    accel_rate_low: float
+    accel_rate_high: float
+    decel_rate: float
+    spool_crossover_n1: float
+    spool_tau_s: float
+    lever_n1: tuple[tuple[float, float], ...]
+    detents: dict[str, float]
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "TurbofanData":
+        d = dict(d)
+        d["lever_n1"] = tuple((float(x), float(y)) for x, y in d["lever_n1"])
+        d["detents"] = dict(d.get("detents", {}))
+        return cls(**d)
+
+
+class Turbofan:
     """All engines lumped together (symmetric thrust)."""
 
-    def __init__(self, data: EngineData):
+    def __init__(self, data: TurbofanData):
         self.data = data
         self.n1 = data.n1_idle
+
+    @property
+    def thrust_line_z_m(self) -> float:
+        return self.data.z_m
+
+    @property
+    def detents(self) -> dict[str, float]:
+        return self.data.detents
 
     def lever_to_n1(self, lever: float) -> float:
         table = self.data.lever_n1
@@ -41,3 +80,7 @@ class Engines:
 
     def thrust(self, air: Air, mach: float) -> float:
         return self.thrust_at(self.n1, air, mach)
+
+    def steady_thrust(self, lever: float, air: Air, mach: float) -> float:
+        """Thrust once the engines have settled at this lever position."""
+        return self.thrust_at(self.lever_to_n1(lever), air, mach)

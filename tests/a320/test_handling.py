@@ -1,21 +1,12 @@
+"""A320 handling: trim, performance figures and the fly-by-wire normal law."""
+
 import math
 
 import pytest
 
-from ifr_trainer.sim.speeds import vs1g_kt
-from ifr_trainer.sim.vec import euler_from_quat, quat_from_euler, rotation_matrix, mat_vec
+from ifr_trainer.aircraft.a320.speeds import vs1g_kt
 
-from .conftest import fly
-
-
-def test_quaternion_euler_round_trip():
-    angles = (0.3, -0.2, 4.0)
-    assert euler_from_quat(quat_from_euler(*angles)) == pytest.approx(angles)
-
-
-def test_rotation_matrix_points_nose_along_heading():
-    north, east, down = mat_vec(rotation_matrix(quat_from_euler(0.0, 0.0, math.pi / 2)), (1.0, 0.0, 0.0))
-    assert (north, east, down) == pytest.approx((0.0, 1.0, 0.0), abs=1e-12)
+from ..conftest import fly
 
 
 def test_trimmed_level_flight_holds(make_sim):
@@ -24,21 +15,21 @@ def test_trimmed_level_flight_holds(make_sim):
     fly(sim, 60)
     assert sim.alt_ft == pytest.approx(alt, abs=5)
     assert sim.cas_kt == pytest.approx(cas, abs=1)
-    assert 50 < sim.engines.n1 < 65  # typical A320 N1 at 220 kt level
+    assert 50 < sim.propulsion.n1 < 65  # typical A320 N1 at 220 kt level
     assert abs(math.degrees(sim.surfaces.elevator)) < 0.5  # THS carries the trim
 
 
 def test_approach_on_glidepath_is_realistic(make_sim):
     sim = make_sim(altitude_ft=1500.0, cas_kt=138.0, flaps=4, gear_down=True, flight_path_deg=-3.0)
     fly(sim, 10)
-    assert 50 < sim.engines.n1 < 62
+    assert 50 < sim.propulsion.n1 < 62
     assert 2.0 < math.degrees(sim.state.theta) < 4.5
     assert sim.vs_fpm == pytest.approx(-740, abs=60)
-    assert 0 < math.degrees(sim.surfaces.ths) < 13.5
+    assert 0 < math.degrees(sim.surfaces.pitch_trim) < 13.5
 
 
 def test_vls_conf_full(aircraft):
-    assert 1.23 * vs1g_kt(aircraft, 64000, aircraft.flaps[-1].cl_max) == pytest.approx(133, abs=4)
+    assert 1.23 * vs1g_kt(aircraft.airframe, 64000, aircraft.airframe.flaps[-1].cl_max) == pytest.approx(133, abs=4)
 
 
 def test_idle_in_level_flight_decelerates(make_sim):

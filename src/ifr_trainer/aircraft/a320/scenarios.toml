@@ -1,0 +1,67 @@
+# A320 settings for the shared scenarios (ifr_trainer/data/scenarios.toml): speed, flaps
+# (0 = CONF 0 ... 4 = FULL) and EFIS settings. Anything in the shared file can be overridden here.
+
+[ils36]
+cas_kt = 200.0
+flaps = 1
+[ils36.cockpit]
+nd_mode = "ROSE ILS"
+needle1 = "VOR1"
+needle2 = "ADF2"
+
+[ils36_established]
+cas_kt = 170.0
+flaps = 2
+[ils36_established.cockpit]
+nd_mode = "ROSE ILS"
+
+[ils36_xwind]
+cas_kt = 180.0
+flaps = 1
+[ils36_xwind.cockpit]
+nd_mode = "ROSE ILS"
+
+[ils18]
+cas_kt = 200.0
+flaps = 1
+[ils18.cockpit]
+nd_mode = "ROSE ILS"
+needle2 = "ADF2"
+
+[vor36]
+cas_kt = 180.0
+flaps = 1
+[vor36.cockpit]
+nd_mode = "ROSE VOR"
+needle1 = "VOR1"
+needle2 = "OFF"
+
+[ndb36]
+cas_kt = 180.0
+flaps = 1
+[ndb36.cockpit]
+nd_mode = "ROSE VOR"
+needle1 = "ADF1"
+needle2 = "VOR2"
+
+[vor_tracking]
+cas_kt = 250.0
+[vor_tracking.cockpit]
+nd_mode = "ROSE VOR"
+nd_range = 40
+needle1 = "VOR1"
+needle2 = "VOR2"
+
+[hold_trn]
+cas_kt = 210.0
+[hold_trn.cockpit]
+nd_mode = "ROSE VOR"
+nd_range = 20
+needle1 = "VOR1"
+needle2 = "VOR2"
+
+[upper_air]
+cas_kt = 250.0
+[upper_air.cockpit]
+nd_mode = "ARC"
+nd_range = 40

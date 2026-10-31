@@ -53,7 +53,7 @@ class Airport:
 
     @classmethod
     def load(cls, path: Path | None = None) -> "Airport":
-        d = load_toml("airport.toml", path)
+        d = load_toml("data/airport.toml", path)
         runways = tuple(Runway(**r) for r in d["runways"])
         thresholds = {r.ident: (r.threshold_x_m, r.threshold_y_m) for r in runways}
         elevation_m = d["elevation_ft"] * FT

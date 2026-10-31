@@ -92,10 +92,10 @@ def test_receivers_follow_tuned_frequencies(make_sim):
     assert r.vor1.ident == "WES" and r.ils is None and r.adf1 is None
 
 
-def test_ils36_scenario_starts_east_of_localizer_outside_glideslope_range(make_sim):
+def test_ils36_scenario_starts_east_of_localizer_outside_glideslope_range(make_sim, aircraft):
     from ifr_trainer.sim.scenario import load_scenarios
 
-    sc = load_scenarios()["ils36"]
+    sc = load_scenarios(aircraft)["ils36"]
     sim = make_sim(**{k: getattr(sc, k) for k in ("distance_nm", "offset_nm", "heading_deg", "altitude_ft", "cas_kt", "flaps")},
                    cockpit=sc.cockpit)
     r = sim.nav_readings()

@@ -1,67 +1,57 @@
-# Instrument flying scenarios. The aircraft starts in the air, trimmed.
+# Instrument flying scenarios shared by every aircraft. The aircraft starts in the air, trimmed.
 # Position: distance_nm before the runway threshold on the extended centreline,
 # then offset_nm to the right of it (negative = left). altitude_ft is MSL; the field is at 500 ft.
-# [name.cockpit] sets radios, ND, references and the minimum (see sim/cockpit.py).
-# At the minimum you are still in cloud: go around (TOGA, pitch up, gear up, flaps one step).
+# [name.cockpit] sets the radios, references and the minimum (see sim/cockpit.py).
+#
+# Each aircraft's scenarios.toml adds its speed (cas_kt), flaps and gear and its own cockpit
+# settings, and may override anything here. Only the scenarios it lists are offered for it.
+# At the minimum you are still in cloud: go around.
 
 [ils36]
-description = "Vectors for ILS 36: heading 330, 2500 ft, CONF 1. Intercept, fly to DA 700, go around."
+description = "Vectors for ILS 36: heading 330, 2500 ft. Intercept, fly to DA 700, go around."
 runway = "36"
 distance_nm = 12.0
 offset_nm = 2.5
 heading_deg = 330.0
 altitude_ft = 2500.0
-cas_kt = 200.0
-flaps = 1
 [ils36.cockpit]
 ils_mhz = 110.30
 ils_crs = 360.0
-nd_mode = "ROSE ILS"
-needle1 = "VOR1"
-needle2 = "ADF2"
 hdg_bug = 330.0
 alt_target_ft = 3000.0
 minimum_ft = 700.0
 
 [ils36_established]
-description = "Established on LOC 36 at 8 NM, 2500 ft, CONF 2. Capture the glideslope, DA 700."
+description = "Established on LOC 36 at 8 NM, 2500 ft. Capture the glideslope, DA 700."
 runway = "36"
 distance_nm = 8.0
 altitude_ft = 2500.0
-cas_kt = 170.0
-flaps = 2
 [ils36_established.cockpit]
 ils_mhz = 110.30
 ils_crs = 360.0
-nd_mode = "ROSE ILS"
 alt_target_ft = 3000.0
 minimum_ft = 700.0
 
 [ils36_xwind]
-description = "LOC 36 at 10 NM, 3000 ft, CONF 1, wind 270/25. Hold the localizer with a crab, DA 700."
+description = "LOC 36 at 10 NM, 3000 ft, wind 270/25. Hold the localizer with a crab, DA 700."
 runway = "36"
 distance_nm = 10.0
 altitude_ft = 3000.0
-cas_kt = 180.0
-flaps = 1
 wind_dir_deg = 270.0
 wind_kt = 25.0
 [ils36_xwind.cockpit]
 ils_mhz = 110.30
 ils_crs = 360.0
-nd_mode = "ROSE ILS"
 alt_target_ft = 3000.0
 minimum_ft = 700.0
 
 [ils18]
-description = "Vectors for ILS 18: heading 150, 2500 ft, CONF 1, wind 200/12. DA 700."
+description = "Vectors for ILS 18: heading 150, 2500 ft, wind 200/12. DA 700."
 runway = "18"
 distance_nm = 12.0
 offset_nm = 2.5
 heading_deg = 150.0
 altitude_ft = 2500.0
-cas_kt = 200.0
-flaps = 1
 wind_dir_deg = 200.0
 wind_kt = 12.0
 [ils18.cockpit]
@@ -69,8 +59,6 @@ ils_mhz = 109.50
 ils_crs = 180.0
 adf1_khz = 335.0
 adf2_khz = 335.0
-nd_mode = "ROSE ILS"
-needle2 = "ADF2"
 hdg_bug = 150.0
 alt_target_ft = 3000.0
 minimum_ft = 700.0
@@ -81,14 +69,9 @@ runway = "36"
 distance_nm = 10.0
 heading_deg = 3.0
 altitude_ft = 3000.0
-cas_kt = 180.0
-flaps = 1
 [vor36.cockpit]
 vor1_mhz = 113.40
 vor1_crs = 3.0
-nd_mode = "ROSE VOR"
-needle1 = "VOR1"
-needle2 = "OFF"
 hdg_bug = 3.0
 alt_target_ft = 3000.0
 minimum_ft = 1000.0
@@ -98,14 +81,9 @@ description = "NDB approach: track inbound to TR on 360, 12 NM, 2500 ft. Continu
 runway = "36"
 distance_nm = 12.0
 altitude_ft = 2500.0
-cas_kt = 180.0
-flaps = 1
 wind_dir_deg = 300.0
 wind_kt = 15.0
 [ndb36.cockpit]
-nd_mode = "ROSE VOR"
-needle1 = "ADF1"
-needle2 = "VOR2"
 vor1_crs = 360.0
 hdg_bug = 360.0
 alt_target_ft = 3000.0
@@ -118,44 +96,31 @@ distance_nm = 18.0
 offset_nm = -5.0
 heading_deg = 60.0
 altitude_ft = 5000.0
-cas_kt = 250.0
 [vor_tracking.cockpit]
 vor1_mhz = 113.40
 vor1_crs = 20.0
 vor2_mhz = 115.20
-nd_mode = "ROSE VOR"
-nd_range = 40
-needle1 = "VOR1"
-needle2 = "VOR2"
 hdg_bug = 60.0
 alt_target_ft = 5000.0
 
 [hold_trn]
-description = "Hold at TRN: inbound course 090 (270 radial), right turns, 1 minute legs, 4000 ft, 210 kt."
+description = "Hold at TRN: inbound course 090 (270 radial), right turns, 1 minute legs, 4000 ft."
 runway = "36"
 distance_nm = -0.81
 offset_nm = -15.0
 heading_deg = 90.0
 altitude_ft = 4000.0
-cas_kt = 210.0
 [hold_trn.cockpit]
 vor1_mhz = 113.40
 vor1_crs = 90.0
 vor2_mhz = 115.20
-nd_mode = "ROSE VOR"
-nd_range = 20
-needle1 = "VOR1"
-needle2 = "VOR2"
 hdg_bug = 90.0
 alt_target_ft = 4000.0
 
 [upper_air]
-description = "Free flight: 25 NM south of the field, FL100, 250 kt, heading 360."
+description = "Free flight: 25 NM south of the field, FL100, heading 360."
 runway = "36"
 distance_nm = 25.0
 altitude_ft = 10000.0
-cas_kt = 250.0
 [upper_air.cockpit]
-nd_mode = "ARC"
-nd_range = 40
 alt_target_ft = 10000.0

@@ -10,10 +10,11 @@ trims automatically so the elevator returns to neutral.
 import math
 from dataclasses import replace
 
-from ..sim.aero import AeroConfig, AeroModel, Surfaces
-from ..sim.aircraft import AircraftData
-from ..sim.flight_model import AircraftState
-from ..sim.units import G
+from ifr_trainer.sim.aero import AeroConfig, AeroModel, Surfaces
+from ifr_trainer.sim.airframe import Airframe
+from ifr_trainer.sim.flight_model import AircraftState
+from ifr_trainer.sim.units import G
+
 from .normal_law import NormalLawLimits, pitch_law, roll_law
 
 DEG = math.pi / 180.0
@@ -33,8 +34,9 @@ class FlightControlComputer:
     TRIM_GAIN = 0.5  # THS rate per unit of elevator deflection, 1/s
     ALPHA_PROT_MARGIN = 1.5 * DEG  # basic high angle-of-attack limit below the stall (full protection: M3)
 
-    def __init__(self, aircraft: AircraftData, aero: AeroModel, limits: NormalLawLimits):
+    def __init__(self, aircraft: Airframe, aero: AeroModel, limits: NormalLawLimits, thrust_line_z_m: float):
         self.ac = aircraft
+        self.thrust_line_z_m = thrust_line_z_m
         self.aero = aero
         self.limits = limits
         self.alpha_limited = False
@@ -70,9 +72,9 @@ class FlightControlComputer:
         # Auto-trim: the THS offloads the elevator. Frozen beyond 33 degrees of bank, outside
         # 0.5 to 1.25 g, and while the high angle-of-attack limit holds the stick back.
         if abs(s.phi) < self.limits.neutral_bank and 0.5 < s.n_path < 1.25 and not self.alpha_limited:
-            rate = lim.ths_rate_deg_s * DEG
+            rate = lim.pitch_trim_rate_deg_s * DEG
             ths_rate = max(-rate, min(rate, self.TRIM_GAIN * surfaces.elevator))
-            surfaces.ths = max(-lim.ths_down_deg * DEG, min(lim.ths_up_deg * DEG, surfaces.ths + ths_rate * dt))
+            surfaces.pitch_trim = max(-lim.pitch_trim_down_deg * DEG, min(lim.pitch_trim_up_deg * DEG, surfaces.pitch_trim + ths_rate * dt))
 
     def _normal_law(
         self,
@@ -122,7 +124,7 @@ class FlightControlComputer:
 
         neutral = replace(surfaces, elevator=0.0, aileron=0.0, rudder=0.0)
         base = self.aero.coefficients(cfg, s.alpha, s.beta, s.alpha_dot, p, q, r, s.tas, s.mach, neutral)
-        elevator = ((m_req - ac.engines.z_m * thrust) / (qs * ac.mac_m) - base.pitch) / d.cm_elevator
+        elevator = ((m_req - self.thrust_line_z_m * thrust) / (qs * ac.mac_m) - base.pitch) / d.cm_elevator
         # Aileron and rudder both affect roll and yaw: solve the 2x2 system.
         cl_req = l_req / (qs * ac.span_m) - base.roll
         cn_req = n_req / (qs * ac.span_m) - base.yaw

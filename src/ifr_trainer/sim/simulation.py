@@ -1,21 +1,20 @@
-"""The simulation: pilot inputs -> flight control computer -> engines + 6-DOF model -> monitoring."""
+"""The simulation: pilot inputs -> flight controls -> engines + 6-DOF model -> monitoring.
+
+Aircraft-independent: the aircraft module supplies the airframe, engines, flight controls
+and cockpit (see ``sim/aircraft.py``).
+"""
 
 import math
 from dataclasses import dataclass
 from enum import Enum
 
-from ..fbw.flight_control import FlightControlComputer
-from ..fbw.normal_law import NormalLawLimits
 from ..nav.receivers import NavReadings, NavReceivers
 from .aero import AeroConfig, Surfaces
-from .aircraft import AircraftData
+from .aircraft import Aircraft
 from .airport import Airport
 from .atmosphere import cas_from_tas, isa, tas_from_cas
-from .cockpit import Cockpit
-from .engines import Engines
 from .flight_model import AircraftState, SixDofModel
 from .scenario import Scenario
-from .speeds import SpeedLimits, speed_limits
 from .trim import trim_flight
 from .units import DEG, FPM, FT, KT, NM
 from .vec import mat_t_vec, rotation_matrix
@@ -25,7 +24,7 @@ from .vec import mat_t_vec, rotation_matrix
 class PilotInputs:
     stick_pitch: float = 0.0  # +1 = full back (nose up)
     stick_roll: float = 0.0  # +1 = full right
-    lever: float = 0.0  # 0 = IDLE ... 1 = TOGA
+    lever: float = 0.0  # thrust lever: 0 = idle ... 1 = full thrust
     flap_lever: int = 0
     gear_down: bool = False
     speedbrake: float = 0.0  # 0 ... 1
@@ -54,19 +53,14 @@ class Simulation:
     GO_AROUND_VS_FPM = 300.0  # climbing this fast after reaching the minimum counts as a go-around
     MAX_DIP_BELOW_MINIMUM_FT = 50.0  # a normal go-around sinks a little below the minimum
 
-    def __init__(
-        self,
-        aircraft: AircraftData,
-        airport: Airport,
-        scenario: Scenario,
-        law_limits: NormalLawLimits | None = None,
-    ):
+    def __init__(self, aircraft: Aircraft, airport: Airport, scenario: Scenario):
         self.aircraft = aircraft
+        self.airframe = aircraft.airframe
         self.airport = airport
         self.scenario = scenario
-        self.model = SixDofModel(aircraft)
-        self.engines = Engines(aircraft.engines)
-        self.fcc = FlightControlComputer(aircraft, self.model.aero, law_limits or NormalLawLimits())
+        self.propulsion = aircraft.new_propulsion()
+        self.model = SixDofModel(self.airframe, self.propulsion.thrust_line_z_m)
+        self.flight_controls = aircraft.new_flight_controls(self.model.aero)
         self.nav = NavReceivers(airport.navaids)
         self.reset()
 
@@ -76,8 +70,8 @@ class Simulation:
         rwy = self.airport.runway(sc.runway)
         hdg = math.radians(rwy.heading_deg)
         d, off = sc.distance_nm * NM, sc.offset_nm * NM
-        self.cockpit = Cockpit(**sc.cockpit)
-        self.mass = sc.mass_kg or self.aircraft.mass_kg
+        self.cockpit = self.aircraft.new_cockpit(sc.cockpit)
+        self.mass = sc.mass_kg or self.airframe.mass_kg
         self.flap_pos = float(sc.flaps)
         self.gear_pos = 1.0 if sc.gear_down else 0.0
         self.surfaces = Surfaces()
@@ -88,7 +82,7 @@ class Simulation:
         gamma = sc.flight_path_deg * DEG
         h = sc.altitude_ft * FT
         tas = tas_from_cas(sc.cas_kt * KT, isa(h))
-        trim = trim_flight(self.aircraft, self.model.aero, self.engines, self.aero(), self.mass, h, tas, gamma)
+        trim = trim_flight(self.airframe, self.model.aero, self.propulsion, self.aero(), self.mass, h, tas, gamma)
         psi = math.radians(sc.heading_deg if sc.heading_deg is not None else rwy.heading_deg)
         s = self.state = AircraftState(
             x_m=rwy.threshold_x_m - d * math.sin(hdg) + off * math.cos(hdg),
@@ -102,8 +96,8 @@ class Simulation:
         s.w = tas * math.sin(trim.alpha) + wind_body[2]
         s.nz = math.cos(gamma)
         self.model.air_data(s, self.wind_ned)
-        self.surfaces.ths = trim.ths
-        self.engines.set_steady(trim.lever)
+        self.surfaces.pitch_trim = trim.pitch_trim
+        self.propulsion.set_steady(trim.lever)
         self._thrust = trim.thrust
         self.inputs = PilotInputs(lever=trim.lever, flap_lever=sc.flaps, gear_down=sc.gear_down)
 
@@ -120,7 +114,7 @@ class Simulation:
         return self.inputs
 
     def aero(self) -> AeroConfig:
-        ac = self.aircraft
+        ac = self.airframe
         cfg = ac.flap_config_at(self.flap_pos)
         cd0 = ac.cd0 + cfg.cd0_delta + ac.gear.cd * self.gear_pos + ac.speedbrake_cd * self.surfaces.speedbrake
         return AeroConfig(cl0=ac.cl0 + cfg.cl0_delta, cl_max=cfg.cl_max, cd0=cd0, cm0=ac.aero.cm0 + cfg.cm0_delta)
@@ -135,9 +129,9 @@ class Simulation:
         self._move_surfaces(dt, inputs)
         cfg = self.aero()
         cas = self.cas_kt
-        self.fcc.update(dt, inputs, s, self.surfaces, cfg, self.mass, self._thrust, cas, self.flap_pos > 0.01)
-        self.engines.step(dt, inputs.lever)
-        self._thrust = self.engines.thrust(isa(s.h_m), s.mach)
+        self.flight_controls.update(dt, inputs, s, self.surfaces, cfg, self.mass, self._thrust, cas, self.flap_pos > 0.01)
+        self.propulsion.step(dt, inputs.lever)
+        self._thrust = self.propulsion.thrust(isa(s.h_m), s.mach)
         self.model.step(s, cfg, self.surfaces, self.mass, self._thrust, self.wind_ned, dt)
         self.time_s += dt
 
@@ -148,7 +142,7 @@ class Simulation:
         self._monitor()
 
     def _move_surfaces(self, dt: float, inputs: PilotInputs) -> None:
-        ac = self.aircraft
+        ac = self.airframe
         target = float(min(max(inputs.flap_lever, 0), len(ac.flaps) - 1))
         step = dt / ac.flap_transit_s_per_step
         self.flap_pos += max(-step, min(step, target - self.flap_pos))
@@ -248,6 +242,3 @@ class Simulation:
     @property
     def wind_kt(self) -> float:
         return math.hypot(*self.wind) / KT
-
-    def speed_limits(self) -> SpeedLimits:
-        return speed_limits(self.aircraft, self.mass, self.flap_pos, self.gear_pos, self.state.h_m)

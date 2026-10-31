@@ -3,7 +3,7 @@
 import math
 from dataclasses import dataclass
 
-from .aircraft import AircraftData
+from .airframe import Airframe
 
 
 @dataclass(frozen=True)
@@ -23,7 +23,7 @@ class Surfaces:
     elevator: float = 0.0
     aileron: float = 0.0
     rudder: float = 0.0
-    ths: float = 0.0
+    pitch_trim: float = 0.0
     speedbrake: float = 0.0
 
 
@@ -39,7 +39,7 @@ class Coefficients:
 
 
 class AeroModel:
-    def __init__(self, aircraft: AircraftData):
+    def __init__(self, aircraft: Airframe):
         self.ac = aircraft
 
     def alpha_stall(self, cfg: AeroConfig) -> float:
@@ -76,7 +76,7 @@ class AeroModel:
             cl_wing
             + a.cl_q * q_hat
             + a.cl_elevator * s.elevator
-            + a.cl_ths * s.ths
+            + a.cl_pitch_trim * s.pitch_trim
             + a.speedbrake_cl * s.speedbrake
         )
         alpha_stall = self.alpha_stall(cfg)
@@ -97,7 +97,7 @@ class AeroModel:
             + a.cm_q * q_hat
             + a.cm_alphadot * ad_hat
             + a.cm_elevator * s.elevator
-            + a.cm_ths * s.ths
+            + a.cm_pitch_trim * s.pitch_trim
         )
         yaw = a.yaw_beta * beta + a.yaw_p * p_hat + a.yaw_r * r_hat + a.yaw_aileron * s.aileron + a.yaw_rudder * s.rudder
         return Coefficients(cl, cd, cy, roll, pitch, yaw, alpha_stall)

@@ -1,14 +1,16 @@
 import pytest
 
-from ifr_trainer.sim.aircraft import AircraftData
+from ifr_trainer.aircraft import load_aircraft
+from ifr_trainer.aircraft.a320 import A320
 from ifr_trainer.sim.airport import Airport
 from ifr_trainer.sim.scenario import Scenario
 from ifr_trainer.sim.simulation import Phase, Simulation
 
 
 @pytest.fixture(scope="session")
-def aircraft() -> AircraftData:
-    return AircraftData.load()
+def aircraft() -> A320:
+    """The reference aircraft for tests of the shared simulation."""
+    return load_aircraft("a320")
 
 
 @pytest.fixture(scope="session")

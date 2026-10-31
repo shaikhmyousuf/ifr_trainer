@@ -9,7 +9,7 @@ import math
 from dataclasses import dataclass
 
 from .aero import AeroConfig, AeroModel, Surfaces
-from .aircraft import AircraftData
+from .airframe import Airframe
 from .atmosphere import isa
 from .units import G
 from .vec import Quat, euler_from_quat, mat_t_vec, mat_vec, quat_from_euler, quat_integrate, rotation_matrix
@@ -58,8 +58,9 @@ class AircraftState:
 
 
 class SixDofModel:
-    def __init__(self, aircraft: AircraftData):
+    def __init__(self, aircraft: Airframe, thrust_line_z_m: float):
         self.ac = aircraft
+        self.thrust_line_z_m = thrust_line_z_m  # thrust line below the CG
         self.aero = AeroModel(aircraft)
 
     def air_data(self, s: AircraftState, wind_ned: tuple[float, float, float], dt: float | None = None) -> None:
@@ -107,7 +108,7 @@ class SixDofModel:
         fy = side - drag * sb
         fz = -drag * sa * cb - lift * ca
         mx = qs * ac.span_m * c.roll
-        my = qs * ac.mac_m * c.pitch + ac.engines.z_m * thrust
+        my = qs * ac.mac_m * c.pitch + self.thrust_line_z_m * thrust
         mz = qs * ac.span_m * c.yaw
         s.nz = -fz / (mass * G)
         s.ny = fy / (mass * G)

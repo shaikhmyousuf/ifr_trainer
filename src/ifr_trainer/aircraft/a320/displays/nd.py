@@ -4,11 +4,11 @@ import math
 
 import pygame
 
-from ..nav.navaids import Ils, Ndb, Vor
-from ..nav.receivers import AdfReading, NavReadings, VorReading
-from ..sim.simulation import Simulation
-from ..sim.units import NM
-from .common import AMBER, BLACK, CYAN, GREEN, GREY, MAGENTA, RED, WHITE, YELLOW, Text
+from ifr_trainer.displays.common import AMBER, BLACK, CYAN, GREEN, GREY, MAGENTA, RED, WHITE, YELLOW, Text
+from ifr_trainer.nav.navaids import Ils, Ndb, Vor
+from ifr_trainer.nav.receivers import AdfReading, NavReadings, VorReading
+from ifr_trainer.sim.simulation import Simulation
+from ifr_trainer.sim.units import NM
 
 SIZE = (600, 600)
 ROSE_CENTRE = (300, 320)

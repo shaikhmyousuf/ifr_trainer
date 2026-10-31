@@ -4,10 +4,7 @@ import math
 
 import pygame
 
-from ..nav.receivers import NavReadings
-from ..sim.simulation import Simulation
-from ..sim.units import wrap_180
-from .common import (
+from ifr_trainer.displays.common import (
     AMBER,
     BLACK,
     CYAN,
@@ -24,6 +21,9 @@ from .common import (
     Text,
     draw_barber,
 )
+from ifr_trainer.nav.receivers import NavReadings
+from ifr_trainer.sim.simulation import Simulation
+from ifr_trainer.sim.units import wrap_180
 
 SIZE = (600, 600)
 CX, CY = 300, 270
@@ -207,7 +207,7 @@ class PFD:
     def _speed_tape(self, s: pygame.Surface, sim: Simulation) -> None:
         r = SPD_RECT
         cas = sim.cas_kt
-        lim = sim.speed_limits()
+        lim = sim.aircraft.speed_limits(sim)
 
         def y_of(v: float) -> float:
             return CY - (v - cas) * PX_PER_KT
@@ -335,7 +335,7 @@ class PFD:
         for x in (120, 240, 360, 480):
             pygame.draw.line(s, GREY, (x, 8), (x, 62), 2)
         lever = sim.inputs.lever
-        detents = sim.aircraft.engines.detents
+        detents = sim.propulsion.detents
         mode = next((name for name in ("TOGA", "MCT") if abs(lever - detents[name]) < 1e-3), None)
         if mode:
             box = pygame.Rect(14, 10, 92, 46)
@@ -345,6 +345,6 @@ class PFD:
         if sim.cockpit.minimum_ft is not None:
             self.text.blit(s, "BARO", 14, WHITE, (420, 26))
             self.text.blit(s, f"{sim.cockpit.minimum_ft:.0f}", 16, CYAN, (420, 46))
-        flaps = sim.aircraft.flap_config_at(sim.flap_pos)
+        flaps = sim.airframe.flap_config_at(sim.flap_pos)
         if sim.flap_pos > 0.01:
             self.text.blit(s, f"CONF {flaps.name}", 14, CYAN, (540, 22))

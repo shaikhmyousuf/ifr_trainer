@@ -1,21 +1,11 @@
+"""The shared simulation: configuration, reset, minimum / go-around / terrain, input. Flown with the A320."""
+
 import pytest
 
-from ifr_trainer.sim.airport import Airport
-from ifr_trainer.sim.scenario import load_scenarios
-from ifr_trainer.sim.simulation import Phase, Severity, Simulation, wind_vector
+from ifr_trainer.sim.simulation import Phase, Severity, wind_vector
 from ifr_trainer.sim.units import KT
 
 from .conftest import fly, fly_until
-
-
-def test_every_scenario_starts_trimmed_and_flies(aircraft):
-    airport = Airport.load()
-    for name, sc in load_scenarios().items():
-        sim = Simulation(aircraft, airport, sc)
-        alt = sim.alt_ft
-        fly(sim, 5)
-        assert sim.phase is Phase.FLYING, name
-        assert abs(sim.alt_ft - alt - 5 * sim.vs_fpm / 60) < 30, name
 
 
 def test_wind_from_west_blows_east():
@@ -30,7 +20,7 @@ def test_flaps_and_gear_move_over_time(make_sim, aircraft):
     sim.inputs.gear_down = True
     fly(sim, 1)
     assert 0 < sim.flap_pos < 1 and 0 < sim.gear_pos < 1
-    fly(sim, 2 * aircraft.flap_transit_s_per_step)
+    fly(sim, 2 * aircraft.airframe.flap_transit_s_per_step)
     assert sim.flap_pos == 2 and sim.gear_pos == 1
 
 
@@ -99,7 +89,7 @@ def test_mouse_drag_deflects_stick_and_release_centres(aircraft, monkeypatch):
 
     pygame.init()
     pygame.display.set_mode((100, 100))
-    controls = Controls(JoystickMapping(), aircraft.engines.detents, len(aircraft.flaps))
+    controls = Controls(JoystickMapping(), aircraft.engines.detents, len(aircraft.airframe.flaps))
     controls.handle_event(pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=(500, 300)))
     monkeypatch.setattr(pygame.mouse, "get_pos", lambda: (500 + MOUSE_STICK_RANGE_PX / 2, 300 + MOUSE_STICK_RANGE_PX))
     inputs = controls.poll(0.016)

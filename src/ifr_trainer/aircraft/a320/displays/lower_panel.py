@@ -11,11 +11,12 @@ from typing import Callable
 
 import pygame
 
-from ..nav.navaids import Ils, Vor
-from ..nav.receivers import NavReadings
-from ..sim.cockpit import ND_MODES, ND_RANGES, NEEDLE1, NEEDLE2, Cockpit
-from ..sim.simulation import Simulation
-from .common import AMBER, CYAN, GREEN, GREY, RED, WHITE, Text
+from ifr_trainer.displays.common import AMBER, CYAN, GREEN, GREY, RED, WHITE, Text
+from ifr_trainer.nav.navaids import Ils, Vor
+from ifr_trainer.nav.receivers import NavReadings
+from ifr_trainer.sim.simulation import Simulation
+
+from ..cockpit import ND_MODES, ND_RANGES, NEEDLE1, NEEDLE2, A320Cockpit
 
 SIZE = (1220, 150)
 BACKGROUND = (18, 18, 24)
@@ -37,12 +38,12 @@ def _wrap_deg(value: float) -> float:
 class Field:
     label: str
     rect: pygame.Rect  # value box, panel coordinates
-    show: Callable[[Cockpit], str]
-    change: Callable[[Cockpit, int, bool], None]  # (cockpit, direction, coarse)
+    show: Callable[[A320Cockpit], str]
+    change: Callable[[A320Cockpit, int, bool], None]  # (cockpit, direction, coarse)
 
 
 def _freq_field(attr: str, lo: float, hi: float, fine: float, coarse: float):
-    def change(c: Cockpit, direction: int, big: bool) -> None:
+    def change(c: A320Cockpit, direction: int, big: bool) -> None:
         value = getattr(c, attr) + direction * (coarse if big else fine)
         span = hi - lo + fine
         setattr(c, attr, round(lo + (value - lo) % span, 2))
@@ -51,17 +52,17 @@ def _freq_field(attr: str, lo: float, hi: float, fine: float, coarse: float):
 
 
 def _course_field(attr: str):
-    def change(c: Cockpit, direction: int, big: bool) -> None:
+    def change(c: A320Cockpit, direction: int, big: bool) -> None:
         setattr(c, attr, _wrap_deg(round(getattr(c, attr)) + direction * (10 if big else 1)))
 
     return change
 
 
-def _change_altitude(c: Cockpit, direction: int, big: bool) -> None:
+def _change_altitude(c: A320Cockpit, direction: int, big: bool) -> None:
     c.alt_target_ft = min(max(c.alt_target_ft + direction * (1000 if big else 100), 0.0), 39000.0)
 
 
-def _change_minimum(c: Cockpit, direction: int, big: bool) -> None:
+def _change_minimum(c: A320Cockpit, direction: int, big: bool) -> None:
     if c.minimum_ft is None:
         c.minimum_ft = 700.0
         return
@@ -118,14 +119,14 @@ class LowerPanel:
     def field_at(self, pos: tuple[int, int]) -> Field | None:
         return next((f for f in self.fields if f.rect.collidepoint(pos)), None)
 
-    def click(self, cockpit: Cockpit, pos: tuple[int, int], coarse: bool) -> bool:
+    def click(self, cockpit: A320Cockpit, pos: tuple[int, int], coarse: bool) -> bool:
         field = self.field_at(pos)
         if field is None:
             return False
         field.change(cockpit, 1 if pos[0] >= field.rect.centerx else -1, coarse)
         return True
 
-    def wheel(self, cockpit: Cockpit, pos: tuple[int, int], steps: int, coarse: bool) -> bool:
+    def wheel(self, cockpit: A320Cockpit, pos: tuple[int, int], steps: int, coarse: bool) -> bool:
         field = self.field_at(pos)
         if field is None:
             return False
@@ -168,14 +169,14 @@ class LowerPanel:
                 self.text.blit(s, "no stn", 12, AMBER, (802, y + 11), "midleft")
 
     def _engines(self, s: pygame.Surface, sim: Simulation, throttle_needs_sync: bool) -> None:
-        n1, n1_cmd = sim.engines.n1, sim.engines.lever_to_n1(sim.inputs.lever)
+        n1, n1_cmd = sim.propulsion.n1, sim.propulsion.lever_to_n1(sim.inputs.lever)
         for cx in (55, 160):
-            self._n1_gauge(s, (cx, 62), n1, n1_cmd, sim.aircraft.engines.n1_max)
+            self._n1_gauge(s, (cx, 62), n1, n1_cmd, sim.propulsion.data.n1_max)
         self.text.blit(s, "N1 %", 13, CYAN, (107, 128))
         # Thrust lever: vertical, with detents.
         top, bottom, x = 18, 128, 270
         pygame.draw.line(s, GREY, (x, top), (x, bottom), 3)
-        for name, pos in sim.aircraft.engines.detents.items():
+        for name, pos in sim.propulsion.detents.items():
             y = bottom - pos * (bottom - top)
             pygame.draw.line(s, WHITE, (x - 8, y), (x + 8, y), 2)
             self.text.blit(s, name, 11, WHITE, (x - 12, y), "midright")
@@ -203,7 +204,7 @@ class LowerPanel:
 
     def _config(self, s: pygame.Surface, sim: Simulation) -> None:
         t = self.text
-        names = [f.name for f in sim.aircraft.flaps]
+        names = [f.name for f in sim.airframe.flaps]
         n = len(names) - 1
         x0, y0, width = 320, 30, 120
         t.blit(s, "FLAP", 13, WHITE, (x0 + width / 2, 12))
@@ -228,11 +229,11 @@ class LowerPanel:
         label = {0.0: "RET", 0.5: "1/2", 1.0: "FULL"}.get(round(sb * 2) / 2, "MOV")
         t.blit(s, "SPD BRK", 12, WHITE, (500, 84))
         t.blit(s, label, 14, GREEN if sb == 0 else AMBER, (500, 100))
-        ths = math.degrees(sim.surfaces.ths)
+        ths = math.degrees(sim.surfaces.pitch_trim)
         t.blit(s, f"PITCH TRIM {abs(ths):3.1f} {'UP' if ths >= 0 else 'DN'}", 12, CYAN, (380, 100))
 
         warnings = []
-        lim = sim.speed_limits()
+        lim = sim.aircraft.speed_limits(sim)
         if sim.state.lift_limited and sim.cas_kt < lim.v_alpha_prot:
             warnings.append(("STALL", RED))
         if sim.cas_kt > lim.vmax + 4:

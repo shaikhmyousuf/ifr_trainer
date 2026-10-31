@@ -1,179 +1,93 @@
-"""Aircraft data loaded from ``aircraft.toml``."""
+"""The aircraft interface: what an aircraft module gives the shared simulation.
 
-import math
-from dataclasses import dataclass
-from pathlib import Path
+Shared by every aircraft: the environment (atmosphere, wind, airport, navaids, radio
+receivers), the rigid-body physics, the stability-derivative aerodynamic model, trim,
+flap and gear movement, and the minimum / go-around / terrain monitoring.
 
-from ..data_files import load_toml
+Supplied by each aircraft module under ``ifr_trainer.aircraft``: its data, its engines
+(``Propulsion``), its flight control system (``FlightControls``: fly-by-wire, or direct
+cables), its cockpit settings, its displays, and its settings for each scenario.
+"""
 
+from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING, Any, Protocol
 
-@dataclass(frozen=True)
-class FlapConfig:
-    name: str
-    cl0_delta: float
-    cl_max: float
-    cd0_delta: float
-    cm0_delta: float
-    vls_factor: float
-    vfe_kt: float | None = None
+from .aero import AeroConfig, AeroModel, Surfaces
+from .airframe import Airframe
+from .atmosphere import Air
+from .cockpit import Cockpit
+from .flight_model import AircraftState
 
-
-@dataclass(frozen=True)
-class EngineData:
-    count: int
-    static_thrust_n: float
-    z_m: float
-    n1_idle: float
-    n1_max: float
-    idle_thrust_fraction: float
-    thrust_exponent: float
-    density_exponent: float
-    mach_lapse: float
-    accel_rate_low: float
-    accel_rate_high: float
-    decel_rate: float
-    spool_crossover_n1: float
-    spool_tau_s: float
-    lever_n1: tuple[tuple[float, float], ...]
-    detents: dict[str, float]
+if TYPE_CHECKING:
+    from ..displays.common import Text
+    from ..displays.panel import Panel
 
 
-@dataclass(frozen=True)
-class Inertia:
-    ixx: float
-    iyy: float
-    izz: float
-
-
-@dataclass(frozen=True)
-class AeroDerivatives:
-    """Non-dimensional derivatives (per rad; rates non-dimensionalised by span or MAC over 2V)."""
-
-    cl_q: float
-    cl_elevator: float
-    cl_ths: float
-    cl_min: float
-    cl_post_stall_slope: float
-    cm0: float
-    cm_alpha: float
-    cm_q: float
-    cm_alphadot: float
-    cm_elevator: float
-    cm_ths: float
-    cy_beta: float
-    cy_rudder: float
-    roll_beta: float
-    roll_p: float
-    roll_r: float
-    roll_aileron: float
-    roll_rudder: float
-    yaw_beta: float
-    yaw_p: float
-    yaw_r: float
-    yaw_aileron: float
-    yaw_rudder: float
-    cd_beta: float
-    speedbrake_cl: float
-
-
-@dataclass(frozen=True)
-class ControlLimits:
-    elevator_up_deg: float
-    elevator_down_deg: float
-    aileron_deg: float
-    rudder_deg: float
-    rudder_limit_start_kt: float
-    rudder_limit_end_kt: float
-    rudder_limit_high_speed_deg: float
-    ths_up_deg: float
-    ths_down_deg: float
-    ths_rate_deg_s: float
-    elevator_rate_deg_s: float
-    aileron_rate_deg_s: float
-    rudder_rate_deg_s: float
-
-    def rudder_limit_deg(self, cas_kt: float) -> float:
-        """Rudder travel limiter: full travel at low speed, reduced at high speed."""
-        f = (cas_kt - self.rudder_limit_start_kt) / (self.rudder_limit_end_kt - self.rudder_limit_start_kt)
-        f = min(max(f, 0.0), 1.0)
-        return self.rudder_deg + (self.rudder_limit_high_speed_deg - self.rudder_deg) * f
-
-
-@dataclass(frozen=True)
-class GearData:
-    cd: float
-    vle_kt: float
-    transit_s: float
-
-
-@dataclass(frozen=True)
-class AircraftData:
-    name: str
-    mass_kg: float
-    wing_area_m2: float
-    span_m: float
-    mac_m: float
-    oswald: float
-    cl_alpha_per_rad: float
-    cl0: float
-    cd0: float
-    mach_crit: float
-    vmo_kt: float
-    mmo: float
-    speedbrake_cd: float
-    inertia: Inertia
-    aero: AeroDerivatives
-    controls: ControlLimits
-    gear: GearData
-    flap_transit_s_per_step: float
-    flaps: tuple[FlapConfig, ...]
-    engines: EngineData
+class Propulsion(Protocol):
+    """Engines, lumped together. The pilot moves one thrust lever, 0 (idle) to 1 (full)."""
 
     @property
-    def induced_drag_k(self) -> float:
-        aspect_ratio = self.span_m**2 / self.wing_area_m2
-        return 1.0 / (math.pi * self.oswald * aspect_ratio)
+    def thrust_line_z_m(self) -> float:
+        """Thrust line below the CG; positive thrust then pitches the nose up."""
+        ...
 
-    def inertia_for(self, mass: float) -> Inertia:
-        f = mass / self.mass_kg
-        return Inertia(self.inertia.ixx * f, self.inertia.iyy * f, self.inertia.izz * f)
+    @property
+    def detents(self) -> dict[str, float]:
+        """Named lever positions, in order (may be empty). Number keys 1, 2, 3... select them."""
+        ...
 
-    def flap_config_at(self, position: float) -> FlapConfig:
-        """Flap data at a continuous flap position (0 = CONF 0, len-1 = FULL), interpolated."""
-        position = min(max(position, 0.0), len(self.flaps) - 1.0)
-        i = int(math.floor(position))
-        j = min(i + 1, len(self.flaps) - 1)
-        f = position - i
-        a, b = self.flaps[i], self.flaps[j]
+    def step(self, dt: float, lever: float) -> None: ...
 
-        def lerp(u: float, v: float) -> float:
-            return u + (v - u) * f
+    def set_steady(self, lever: float) -> None:
+        """Settle the engines at this lever position (used at a reset)."""
+        ...
 
-        vfe = self.flaps[math.ceil(position - 1e-6)].vfe_kt if position > 1e-6 else None
-        return FlapConfig(
-            name=a.name if f < 0.5 else b.name,
-            cl0_delta=lerp(a.cl0_delta, b.cl0_delta),
-            cl_max=lerp(a.cl_max, b.cl_max),
-            cd0_delta=lerp(a.cd0_delta, b.cd0_delta),
-            cm0_delta=lerp(a.cm0_delta, b.cm0_delta),
-            vls_factor=lerp(a.vls_factor, b.vls_factor),
-            vfe_kt=vfe,
-        )
+    def thrust(self, air: Air, mach: float) -> float: ...
 
-    @classmethod
-    def load(cls, path: Path | None = None) -> "AircraftData":
-        d = load_toml("aircraft.toml", path)
-        e = dict(d["engines"])
-        e["lever_n1"] = tuple((float(x), float(y)) for x, y in e["lever_n1"])
-        e["detents"] = dict(e["detents"])
-        scalars = {k: v for k, v in d.items() if not isinstance(v, dict)}
-        return cls(
-            **scalars,
-            inertia=Inertia(**d["inertia"]),
-            aero=AeroDerivatives(**d["aero"]),
-            controls=ControlLimits(**d["controls"]),
-            gear=GearData(**d["gear"]),
-            flap_transit_s_per_step=d["flaps"]["transit_s_per_step"],
-            flaps=tuple(FlapConfig(**f) for f in d["flaps"]["configs"]),
-            engines=EngineData(**e),
-        )
+    def steady_thrust(self, lever: float, air: Air, mach: float) -> float:
+        """Thrust once settled at this lever position (used by trim)."""
+        ...
+
+
+class FlightControls(Protocol):
+    """Turns pilot inputs into control surface positions, every step."""
+
+    def update(
+        self,
+        dt: float,
+        inputs: Any,
+        s: AircraftState,
+        surfaces: Surfaces,
+        cfg: AeroConfig,
+        mass: float,
+        thrust: float,
+        cas_kt: float,
+        flaps_extended: bool,
+    ) -> None: ...
+
+
+class Aircraft(ABC):
+    """An aircraft type. Subclasses live in their own package under ``ifr_trainer.aircraft``."""
+
+    id: str  # short name used on the command line, e.g. "a320"
+    title: str
+    airframe: Airframe
+
+    @abstractmethod
+    def new_propulsion(self) -> Propulsion: ...
+
+    @abstractmethod
+    def new_flight_controls(self, aero: AeroModel) -> FlightControls: ...
+
+    @abstractmethod
+    def new_cockpit(self, settings: dict) -> Cockpit:
+        """Cockpit state from a scenario's ``cockpit`` settings."""
+
+    @abstractmethod
+    def new_panel(self, text: "Text") -> "Panel":
+        """The aircraft's displays and panel controls."""
+
+    @abstractmethod
+    def scenario_settings(self) -> dict[str, dict]:
+        """Per-scenario settings (speed, flaps, cockpit...) merged over the shared scenarios.
+        Only the scenarios listed here are offered for this aircraft."""

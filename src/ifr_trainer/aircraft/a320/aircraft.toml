@@ -1,4 +1,6 @@
 # Approximate A320-200 data, tuned for handling, not certified performance.
+# The top-level values and the inertia, aero, controls, gear and flaps tables are the
+# shared airframe format (sim/airframe.py); [engines] and [speeds] are read by the A320 module.
 # Body axes: x forward, y right, z down, origin at the centre of gravity (CG).
 # Control signs are pilot sense: + elevator/THS = nose up, + aileron = roll right, + rudder = nose right.
 name = "A320 (approximate)"
@@ -23,7 +25,7 @@ izz = 5.18e6
 [aero]
 cl_q = 4.0
 cl_elevator = -0.30
-cl_ths = -0.60
+cl_pitch_trim = -0.60
 cl_min = -0.8
 cl_post_stall_slope = -2.0
 cm0 = 0.02
@@ -31,7 +33,7 @@ cm_alpha = -0.9
 cm_q = -32.0
 cm_alphadot = -12.0
 cm_elevator = 0.8
-cm_ths = 2.6
+cm_pitch_trim = 2.6
 cy_beta = -0.9
 cy_rudder = -0.18
 roll_beta = -0.10
@@ -55,9 +57,9 @@ rudder_deg = 30.0
 rudder_limit_start_kt = 160.0     # rudder travel limiter: full travel below this speed...
 rudder_limit_end_kt = 380.0
 rudder_limit_high_speed_deg = 3.5  # ...reducing to this at rudder_limit_end_kt
-ths_up_deg = 13.5
-ths_down_deg = 4.0
-ths_rate_deg_s = 0.7
+pitch_trim_up_deg = 13.5
+pitch_trim_down_deg = 4.0
+pitch_trim_rate_deg_s = 0.7
 elevator_rate_deg_s = 40.0
 aileron_rate_deg_s = 50.0
 rudder_rate_deg_s = 40.0
@@ -77,7 +79,6 @@ cl0_delta = 0.0
 cl_max = 1.40
 cd0_delta = 0.0
 cm0_delta = 0.0
-vls_factor = 1.28
 
 [[flaps.configs]]
 name = "1"
@@ -86,7 +87,6 @@ cl_max = 1.85
 cd0_delta = 0.008
 cm0_delta = -0.02
 vfe_kt = 230.0
-vls_factor = 1.23
 
 [[flaps.configs]]
 name = "2"
@@ -95,7 +95,6 @@ cl_max = 2.20
 cd0_delta = 0.020
 cm0_delta = -0.04
 vfe_kt = 200.0
-vls_factor = 1.23
 
 [[flaps.configs]]
 name = "3"
@@ -104,7 +103,6 @@ cl_max = 2.40
 cd0_delta = 0.030
 cm0_delta = -0.06
 vfe_kt = 185.0
-vls_factor = 1.23
 
 [[flaps.configs]]
 name = "FULL"
@@ -113,9 +111,12 @@ cl_max = 2.69
 cd0_delta = 0.042
 cm0_delta = -0.08
 vfe_kt = 177.0
-vls_factor = 1.23
 
-[engines]
+[speeds]
+# VLS / VS1G for CONF 0, 1, 2, 3, FULL
+vls_factors = [1.28, 1.23, 1.23, 1.23, 1.23]
+
+[engines]                         # turbofan data (sim/turbofan.py)
 count = 2
 static_thrust_n = 120000.0        # per engine, sea level
 z_m = 1.2                         # thrust line below the CG (thrust pitches the nose up)

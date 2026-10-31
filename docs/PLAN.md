@@ -1,8 +1,9 @@
 # IFR Trainer — Plan
 
-A lightweight instrument-flying trainer for practising **hand flying** with
-**A320-style displays**. It is loosely based on the A320, not a replica, and not
-a certified training device.
+A lightweight instrument-flying trainer for practising **hand flying**. Aircraft
+are **modules**: they share one environment but each has its own handling, engines,
+flight controls and displays. The first module is loosely based on the A320; a
+Cessna 172 and a generic jet are planned. Not a certified training device.
 
 **Scope: instrument flying only.** Every exercise starts in the air and is flown
 in cloud. Approaches end at the minimum with a go-around on instruments. Takeoff,
@@ -14,6 +15,7 @@ coordinates turns automatically).
 | Topic | Decision |
 |---|---|
 | Purpose | Hand flying under IFR: raw-data approaches to minima and go-around, holds, tracking, partial panel. No autopilot, no takeoff or landing. |
+| Aircraft | Modular: A320 (done), Cessna 172 and a generic jet (planned) in the same environment |
 | Controls | Joystick (sidestick); keyboard fallback for testing |
 | Flight model | Our own, written in Python — no compiled flight dynamics library |
 | Rendering | pygame-ce, 2D only. No outside view (we are in cloud) |
@@ -33,16 +35,36 @@ coordinates turns automatically).
 
 ```
 src/ifr_trainer/
-├── data/          aircraft, airport, scenarios, controls (TOML)
-├── sim/           atmosphere, aircraft data, engines, flight model, speeds,
-│                  trim, airport, scenario, simulation (orchestrator)
-├── fbw/           normal law (later: protections, alternate/direct law)
+├── app.py         main loop, aircraft-independent
+├── data/          shared data: airport, scenarios (common part), joystick mapping
+├── sim/           the shared environment and physics:
+│                  atmosphere, airport, scenario, cockpit (radios, references, minimum),
+│                  airframe data, stability-derivative aero, 6-DOF flight model, trim,
+│                  turbofan engines (for any jet), simulation (orchestrator, monitoring),
+│                  aircraft.py: the interface every aircraft module implements
 ├── nav/           navaids and VOR / DME / ILS / ADF receivers
 ├── input/         joystick, mouse and keyboard, joystick test tool
-├── displays/      PFD, ND, lower panel (engines, config, radios, EFIS), (M6) standby
-├── training/      (M5) scenarios, scoring, recorder, debrief
-└── app.py         main loop
+├── displays/      shared drawing helpers and the panel interface
+└── aircraft/      aircraft modules, listed in aircraft/__init__.py
+    └── a320/      aircraft.toml, scenarios.toml, A320 class, fly-by-wire (fbw/),
+                   speeds (VLS, green dot), cockpit (EFIS settings),
+                   displays (PFD, ND, lower panel, layout)
 ```
+
+**The aircraft interface** (`sim/aircraft.py`). The simulation asks an aircraft for:
+
+| Part | A320 | Cessna 172 (planned) |
+|---|---|---|
+| Airframe data (`aircraft.toml`, shared format) | approximate A320-200 | C172 figures |
+| Engines (`Propulsion`) | `Turbofan` (shared) | piston engine and propeller |
+| Flight controls (`FlightControls`) | normal law by dynamic inversion | direct: stick moves the surfaces, manual trim |
+| Cockpit state | radios + EFIS settings | radios + OBS / heading bug |
+| Panel (displays) | PFD, ND, lower panel | six-pack and radio stack |
+| Scenario settings (`scenarios.toml`) | speeds, CONF, ND modes | speeds, flaps |
+
+Scenarios are split the same way: `data/scenarios.toml` holds the exercise (position,
+altitude, wind, radios, minimum); each aircraft adds how it flies it. The A320's
+handling was verified bit-for-bit identical across the refactor.
 
 ## Flight model progression
 

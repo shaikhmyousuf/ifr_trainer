@@ -29,7 +29,7 @@ class JoystickMapping:
 
     @classmethod
     def load(cls, path: Path | None = None) -> "JoystickMapping":
-        d = load_toml("controls.toml", path)["joystick"]
+        d = load_toml("data/controls.toml", path)["joystick"]
         known = {f.name for f in fields(cls)}
         return cls(**{k: v for k, v in d.items() if k in known})
 
@@ -49,10 +49,17 @@ class Controls:
     KEY_STICK_LIMIT = 0.5  # arrow keys alone; hold Shift for full deflection
     KEY_LEVER_RATE = 0.25
 
-    def __init__(self, mapping: JoystickMapping, detents: dict[str, float], flap_positions: int):
+    def __init__(
+        self,
+        mapping: JoystickMapping,
+        detents: dict[str, float],
+        flap_positions: int,
+        key_actions: dict[int, str] | None = None,
+    ):
         self.mapping = mapping
-        self.detents = detents
+        self.detents = list(detents.values())  # number keys 1, 2, 3... select these in order
         self.flap_positions = flap_positions
+        self.key_actions = key_actions or {}  # aircraft panel keys, returned as actions
         self.joystick: pygame.joystick.JoystickType | None = None
         self.inputs = PilotInputs()
         self.throttle_live = False
@@ -83,7 +90,8 @@ class Controls:
         self._throttle_ref = self._raw_throttle() or 0.0
 
     def handle_event(self, event: pygame.event.Event) -> str | None:
-        """Process a discrete event. Returns an app action ('quit', 'reset', 'pause', 'help') or None."""
+        """Process a discrete event. Returns an action ('quit', 'reset', 'pause', 'help', or one of
+        the aircraft panel's actions) or None."""
         if event.type == pygame.JOYDEVICEADDED and self.joystick is None:
             self.open_joystick()
         elif event.type == pygame.JOYDEVICEREMOVED and self.joystick is not None:
@@ -107,20 +115,14 @@ class Controls:
                 return "reset"
             if key == pygame.K_f:
                 return self._action("flaps_up" if mods & pygame.KMOD_SHIFT else "flaps_down")
-            simple = {
-                pygame.K_g: "gear",
-                pygame.K_b: "speedbrake",
-                pygame.K_p: "pause",
-                pygame.K_h: "help",
-                pygame.K_m: "nd_mode",
-                pygame.K_n: "nd_range",
-                pygame.K_l: "ls",
-            }
+            simple = {pygame.K_g: "gear", pygame.K_b: "speedbrake", pygame.K_p: "pause", pygame.K_h: "help"}
             if key in simple:
                 return self._action(simple[key])
-            names = {pygame.K_1: "IDLE", pygame.K_2: "CL", pygame.K_3: "MCT", pygame.K_4: "TOGA"}
-            if key in names:
-                self._set_lever_manually(self.detents[names[key]])
+            if key in self.key_actions:
+                return self.key_actions[key]
+            index = key - pygame.K_1
+            if 0 <= index < min(len(self.detents), 9):
+                self._set_lever_manually(self.detents[index])
         return None
 
     def _action(self, action: str) -> str | None:
@@ -186,7 +188,7 @@ class Controls:
                 self.throttle_live = True
             if self.throttle_live:
                 lever = (1.0 - raw) / 2.0 if m.throttle_invert else (raw + 1.0) / 2.0
-                for detent in self.detents.values():
+                for detent in self.detents:
                     if abs(lever - detent) < DETENT_SNAP:
                         lever = detent
                 i.lever = lever
