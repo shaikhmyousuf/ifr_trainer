@@ -41,27 +41,31 @@ src/ifr_trainer/
 ├── sim/           the shared environment and physics:
 │                  atmosphere, airport, scenario, cockpit (radios, references, minimum),
 │                  airframe data, stability-derivative aero, 6-DOF flight model, trim,
-│                  turbofan engines (for any jet), simulation (orchestrator, monitoring),
+│                  turbofan engines (for any jet), direct controls (for aircraft without
+│                  fly-by-wire), simulation (orchestrator, monitoring),
 │                  aircraft.py: the interface every aircraft module implements
 ├── nav/           navaids and VOR / DME / ILS / ADF receivers
 ├── input/         joystick, mouse and keyboard, joystick test tool
-├── displays/      shared drawing helpers and the panel interface
+├── displays/      shared drawing helpers, the panel interface, round-dial gauges and
+│                  the round-dial panel (SteamPanel) used by the C172 and the jet
 └── aircraft/      aircraft modules, listed in aircraft/__init__.py
     └── a320/      aircraft.toml, scenarios.toml, A320 class, fly-by-wire (fbw/),
                    speeds (VLS, green dot), cockpit (EFIS settings),
                    displays (PFD, ND, lower panel, layout)
+    ├── c172/      aircraft.toml, scenarios.toml, piston engine and propeller, panel
+    └── citation/  aircraft.toml, scenarios.toml, panel (N1, barber pole, gear lights)
 ```
 
 **The aircraft interface** (`sim/aircraft.py`). The simulation asks an aircraft for:
 
-| Part | A320 | Cessna 172P |
-|---|---|---|
-| Airframe data (`aircraft.toml`, shared format) | approximate A320-200 | JSBSim `c172p` |
-| Engines (`Propulsion`) | `Turbofan` (shared) | piston engine, fixed-pitch propeller (JSBSim `prop_75in2f`), RPM as a state |
-| Flight controls (`FlightControls`) | normal law by dynamic inversion | direct: stick moves the surfaces, manual trim, automatic rudder |
-| Cockpit state | radios + EFIS settings | radios (NAV1 tunes VOR or ILS) |
-| Panel (displays) | PFD, ND, lower panel | six-pack, NAV1/NAV2/ADF, tachometer, radio stack |
-| Scenario settings (`scenarios.toml`) | speeds, CONF, ND modes | speeds, flaps, NAV1 on the localizer |
+| Part | A320 | Cessna 172P | Business jet |
+|---|---|---|---|
+| Airframe data (`aircraft.toml`, shared format) | approximate A320-200 | JSBSim `c172p` | TU Delft Citation II |
+| Engines (`Propulsion`) | `Turbofan` (shared) | piston engine, fixed-pitch propeller (JSBSim `prop_75in2f`), RPM as a state | `Turbofan` (shared) |
+| Flight controls (`FlightControls`) | normal law by dynamic inversion | `DirectControls` (shared): stick moves the surfaces, manual trim, automatic rudder | `DirectControls`, with stick expo |
+| Cockpit state | radios + EFIS settings | `Nav1Cockpit` (shared): NAV1 tunes VOR or ILS | `Nav1Cockpit` |
+| Panel (displays) | PFD, ND, lower panel | `SteamPanel` + tachometer | `SteamPanel` + N1, barber pole, gear and speedbrake lights |
+| Scenario settings (`scenarios.toml`) | speeds, CONF, ND modes | speeds, flaps, NAV1 on the localizer | speeds, flaps, gear, NAV1 on the localizer |
 
 Scenarios are split the same way: `data/scenarios.toml` holds the exercise (position,
 altitude, wind, radios, minimum); each aircraft adds how it flies it. The A320's
@@ -116,6 +120,37 @@ Sources: JSBSim `aircraft/c172p`, `engine/eng_io320` and `engine/prop_75in2f`
   inefficient at low speed.
 * **Not modelled**: propeller wash on the tail, P-factor and torque (the automatic rudder
   hides them), mixture, carburettor icing, gyro precession.
+
+## Business jet data (Cessna Citation II)
+
+Sources, all open: the TU Delft flight dynamics course data for the PH-LAB Citation II
+(`Cit_par`: linear stability derivatives and radii of gyration, in the course's student
+repositories on GitHub); five student groups' flight-test measurements of the values the
+course leaves for the flight test (C<sub>D0</sub>, e, C<sub>Lα</sub>, C<sub>mα</sub>,
+C<sub>mδe</sub>); Delfosse et al., EuroGNC 2022 (CC BY 4.0: geometry, masses, stall angle);
+a TU Eindhoven thesis (elevator travel, linear model modes); FAA TCDS A22CE and published
+figures (JT15D-4 2500 lbf, flap and gear limits, VMO 262 / MMO 0.705, 82 KCAS landing stall,
+43,000 ft).
+
+* **Taken directly from the data**: geometry, inertia (from the Delft radii of gyration),
+  all moment and force derivatives (pitch-rate and α̇ terms doubled: Delft uses q c / V,
+  this simulator q c / 2V), elevator travel; the flight-measured median C<sub>D0</sub> 0.022,
+  e 0.81, C<sub>Lα</sub> 4.5, C<sub>mα</sub> −0.60, C<sub>mδe</sub> −1.3.
+* **Fitted to the published performance**: the turbofan thrust lapse (density exponent
+  0.92, Mach lapse 0.30 plus 0.8 σ² at low altitude, a term added to the shared turbofan
+  model with a default of 0). Result: 3350 fpm sea-level climb at 6033 kg (book 3370),
+  389 KTAS at FL350 (385), ceiling 43,000 ft.
+* **Estimated**: flap lift and drag increments (set so the landing stall is 82 KCAS and the
+  stall angle stays near Delfosse's 14°; approach attitude 1.8° at VREF + 5), gear and
+  speedbrake drag, aileron and rudder travel, trim range.
+* **Checked against the Delft / Eindhoven models**: short period ζ 0.39, ω<sub>n</sub> 4.2 rad/s
+  at 5000 m, 166 m/s (model 0.43, 4.59); phugoid period 73 s (74). Phugoid damping is lower
+  (0.10 against 0.16): this simulator has no C<sub>Xu</sub> term.
+* **Known gaps**: the roll time constant (about 0.2 s) is shorter than the 0.33 to 0.5 s of
+  DLR's Citation model; the Delft aileron yaw is slightly proverse; no engine-out asymmetry
+  (engines are lumped). The stick has an expo curve: the elevator is powerful against the
+  static stability (C<sub>mδe</sub> / C<sub>mα</sub> ≈ 2.2, the C172 0.57) and the trainer
+  has no control forces.
 
 ## Airport XIFR — Trainer Field (fictional)
 

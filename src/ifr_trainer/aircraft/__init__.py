@@ -9,6 +9,7 @@ from ..sim.aircraft import Aircraft
 AIRCRAFT = {
     "a320": "ifr_trainer.aircraft.a320",
     "c172": "ifr_trainer.aircraft.c172",
+    "citation": "ifr_trainer.aircraft.citation",
 }
 DEFAULT_AIRCRAFT = "a320"
 

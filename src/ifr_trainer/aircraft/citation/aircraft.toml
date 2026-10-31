@@ -1,0 +1,136 @@
+# Generic light business jet, built on openly available Cessna 550 Citation II data:
+#  * TU Delft / NLR PH-LAB research aircraft, flight dynamics course data (Cit_par: the linear
+#    stability derivatives, inertia radii of gyration, geometry), as published in the course's
+#    student repositories on GitHub (e.g. github.com/gmmare/SVV-B19, Cit_par.py)
+#  * Drag polar, lift slope, static stability and elevator effectiveness measured in flight by
+#    student groups on PH-LAB (the course leaves these for the flight test): median of five groups
+#  * Delfosse et al., "Asymmetric Stall Modeling of the Cessna Citation II", EuroGNC 2022
+#    (CC BY 4.0): geometry, masses, stall angle of attack
+#  * Wenzel / TU Eindhoven, "Direct lift control for the Cessna Citation II": elevator travel
+#  * Published figures: 2 x P&WC JT15D-4, 2500 lbf; flaps 15 / 40 deg limits 200 / 174 KIAS
+#    (FAA TCDS A22CE); VMO 262 KIAS, MMO 0.705; stall 82 KCAS landing; ceiling 43,000 ft
+# The Delft derivatives use q c / V and alpha-dot c / V; this simulator uses c / 2V, so the pitch
+# rate and alpha-dot derivatives are doubled. Lateral derivatives use b / 2V in both.
+# Body axes: x forward, y right, z down. Control signs are pilot sense (+ elevator / trim = nose
+# up, + aileron = roll right, + rudder = nose right); Delft uses trailing-edge-down positive for
+# the elevator and the opposite sense for aileron and rudder, so those signs are flipped here.
+name = "Business jet (Citation II data)"
+mass_kg = 5800.0            # mid weight: MTOW 6033 kg (13,300 lb), PH-LAB with crew and half fuel
+wing_area_m2 = 30.0
+span_m = 15.911
+mac_m = 2.0569
+cl_alpha_per_rad = 4.5      # flight-measured, trimmed: 4.39 to 4.64 (course reference 5.084)
+cl0 = 0.10                  # Delfosse 2022 clean CL0 0.09 (stall-region fit); gives 5 deg at the course's reference point
+cd0 = 0.022                 # flight-measured: 0.0208 to 0.0269, median 0.022
+oswald = 0.81               # flight-measured: 0.60 to 0.88, median 0.81
+vmo_kt = 262.0
+mmo = 0.705
+mach_crit = 0.70            # unswept NACA 23000-series wing: drag rise near MMO
+speedbrake_cd = 0.005       # estimate: the speedbrakes more than double the idle descent rate (1100 -> 2900 fpm at 220 kt)
+
+[inertia]                   # Delft radii of gyration: KX2 0.019, KY2 1.393, KZ2 0.042 (Ixx = KX2 m b^2, Iyy = KY2 m c^2)
+ixx = 27898.0
+iyy = 34170.0
+izz = 61670.0
+
+[aero]
+cl_q = 11.33                # CZq -5.6629 per q c / V
+cl_elevator = -0.696        # CZde -0.69612, trailing edge down positive
+cl_pitch_trim = -0.696      # the trim tab acts as an elevator offset
+cl_min = -0.6
+cl_post_stall_slope = -3.0
+cm0 = 0.0297                # Cit_par Cm0
+cm_alpha = -0.60            # flight-measured Cma -0.55 to -0.84 (CG dependent); course reference -0.5626
+cm_q = -17.59               # Cmq -8.79415 per q c / V
+cm_alphadot = 0.356         # Cmadot +0.178 per alpha-dot c / V (positive in the Delft data)
+cm_elevator = 1.30          # flight-measured Cmde -0.83 to -1.85, median -1.3; course reference -1.1642
+cm_pitch_trim = 1.30
+cy_beta = -0.75
+cy_rudder = -0.23           # CYdr +0.23
+roll_beta = -0.1026
+roll_p = -0.71085
+roll_r = 0.2376
+roll_aileron = 0.23088      # Clda -0.23088
+roll_rudder = -0.0344       # Cldr +0.0344
+yaw_beta = 0.1348
+yaw_p = -0.0602
+yaw_r = -0.2061
+yaw_aileron = 0.0120        # Cnda -0.0120: slightly proverse in the Delft data
+yaw_rudder = 0.0939         # Cndr -0.0939
+cd_beta = 0.3               # estimate
+speedbrake_cl = -0.05       # estimate
+
+[controls]
+elevator_up_deg = 18.8      # TU Eindhoven: -18.8 / +15.7 deg
+elevator_down_deg = 15.7
+aileron_deg = 12.5          # estimate
+rudder_deg = 25.0           # estimate; only the automatic rudder moves it
+pitch_trim_up_deg = 10.0    # trim tab range as an elevator-equivalent offset (estimate)
+pitch_trim_down_deg = 6.0
+pitch_trim_rate_deg_s = 0.6
+elevator_rate_deg_s = 60.0  # cables: limited only by the pilot
+aileron_rate_deg_s = 60.0
+rudder_rate_deg_s = 40.0
+# Elevator authority is large against the static stability (Cmde / Cma about 2.2; the C172 0.57):
+# about 0.4 g per 10 % of linear stick at approach speed. Shape the stick for fine control.
+stick_expo = 0.6
+
+[gear]
+cd = 0.020                  # estimate
+vle_kt = 174.0              # TCDS A22CE (early serials)
+transit_s = 6.0
+height_m = 1.8
+
+[flaps]
+transit_s_per_step = 8.0    # 0 -> 15 -> 40 deg
+
+# 0, 15 (takeoff and approach), 40 deg (landing). The open data does not separate the flap
+# increments; they are set so that the stall angle stays near Delfosse's 14 deg clean, the
+# landing stall speed matches the published 82 KCAS, and the approach attitude is about 2 deg.
+[[flaps.configs]]
+name = "0"
+cl0_delta = 0.0
+cl_max = 1.25               # VS1G about 100 KCAS at 5800 kg
+cd0_delta = 0.0
+cm0_delta = 0.0
+
+[[flaps.configs]]
+name = "15"
+cl0_delta = 0.25
+cl_max = 1.50
+cd0_delta = 0.010
+cm0_delta = -0.03
+vfe_kt = 200.0
+
+[[flaps.configs]]
+name = "40"
+cl0_delta = 0.55
+cl_max = 1.80               # 82 KCAS at maximum landing weight
+cd0_delta = 0.045
+cm0_delta = -0.08
+vfe_kt = 174.0
+
+[speeds]                    # airspeed indicator: jet dial, white arc VSO..VFE(40), barber pole VMO/MMO
+scale = [40, 320, 20, 40]
+white_arc = [80.0, 174.0]
+vref_factor = 1.3           # VREF = 1.3 VSO (flaps 40, gear down)
+
+[engines]                   # 2 x P&WC JT15D-4 (sim/turbofan.py)
+count = 2
+static_thrust_n = 11120.0   # 2500 lbf each, sea level static
+z_m = -0.3                  # rear-mounted engines: thrust line slightly above the CG, so power pitches the nose down a little (Delft CmTc < 0)
+n1_idle = 25.0
+n1_max = 104.0              # takeoff N1
+idle_thrust_fraction = 0.04
+thrust_exponent = 2.0
+# Thrust lapse fitted to the published performance (tests/citation/test_performance.py):
+# 3350 fpm sea-level climb at 6033 kg (book 3370), 389 KTAS at FL350 (385), ceiling 43,000 ft.
+density_exponent = 0.92
+mach_lapse = 0.30
+mach_lapse_sea_level = 0.8
+accel_rate_low = 8.0
+accel_rate_high = 16.0
+decel_rate = 12.0
+spool_crossover_n1 = 55.0
+spool_tau_s = 0.8
+lever_n1 = [[0.0, 25.0], [1.0, 104.0]]

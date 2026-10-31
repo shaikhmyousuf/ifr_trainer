@@ -112,6 +112,7 @@ cm0_delta = -0.1271
 vfe_kt = 85.0
 
 [speeds]                    # airspeed indicator markings, Cessna 172P (knots)
+scale = [30, 170, 10, 20]   # dial: low, high, tick step, label step
 white_arc = [40.0, 85.0]
 green_arc = [50.0, 127.0]
 yellow_arc = [127.0, 158.0]

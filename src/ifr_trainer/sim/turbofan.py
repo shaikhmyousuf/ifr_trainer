@@ -26,6 +26,7 @@ class TurbofanData:
     spool_tau_s: float
     lever_n1: tuple[tuple[float, float], ...]
     detents: dict[str, float]
+    mach_lapse_sea_level: float = 0.0  # extra Mach lapse, fading with density squared: ram drag dominates low down
 
     @classmethod
     def from_dict(cls, d: dict) -> "TurbofanData":
@@ -75,7 +76,8 @@ class Turbofan:
         d = self.data
         frac = min(max((n1 - d.n1_idle) / (d.n1_max - d.n1_idle), 0.0), 1.0)
         f = d.idle_thrust_fraction + (1.0 - d.idle_thrust_fraction) * frac**d.thrust_exponent
-        lapse = (air.density / RHO0) ** d.density_exponent * (1.0 - d.mach_lapse * mach)
+        sigma = air.density / RHO0
+        lapse = sigma**d.density_exponent * (1.0 - (d.mach_lapse + d.mach_lapse_sea_level * sigma * sigma) * mach)
         return d.count * d.static_thrust_n * f * lapse
 
     def thrust(self, air: Air, mach: float) -> float:

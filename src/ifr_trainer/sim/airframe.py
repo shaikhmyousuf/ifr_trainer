@@ -77,6 +77,9 @@ class ControlLimits:
     rudder_limit_start_kt: float | None = None
     rudder_limit_end_kt: float | None = None
     rudder_limit_high_speed_deg: float | None = None
+    # Direct controls only: stick shaping, 0 = linear ... 1 = cubic. The trainer has no control
+    # forces, so a stiff, powerful elevator gets fine control near centre; full stick is still full travel.
+    stick_expo: float = 0.0
 
     def rudder_limit_deg(self, cas_kt: float) -> float:
         if self.rudder_limit_start_kt is None or self.rudder_limit_end_kt is None:

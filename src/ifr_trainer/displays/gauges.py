@@ -1,4 +1,4 @@
-"""Round "steam gauge" instruments for the Cessna 172 panel.
+"""Round "steam gauge" instruments for the round-dial panels (Cessna 172, Citation).
 
 Every gauge is drawn around a centre (cx, cy) with radius R. Dial angles are measured
 clockwise from 12 o'clock, in degrees.
@@ -60,25 +60,34 @@ class Gauges:
 
     # --- Airspeed indicator --------------------------------------------------------------
 
-    @staticmethod
-    def asi_angle(kt: float) -> float:
-        return 25.0 + (min(max(kt, 30.0), 170.0) - 30.0) / 140.0 * 310.0
+    def airspeed(self, s, c, kt: float, marks: dict, vmax_kt: float | None = None) -> None:
+        """``marks``: the aircraft's [speeds] table. ``scale`` = [low, high, tick step, label step];
+        the coloured arcs are optional. ``vmax_kt`` draws a moving barber pole (a jet's VMO/MMO)."""
+        R = self.R
+        lo, hi, tick, label = marks["scale"]
 
-    def airspeed(self, s, c, kt: float, marks: dict) -> None:
-        R, ang = self.R, self.asi_angle
+        def ang(v: float) -> float:
+            return 25.0 + (min(max(v, lo), hi) - lo) / (hi - lo) * 310.0
+
         self.face(s, c)
         self.text.blit(s, "AIRSPEED", 11, GREY, (c[0], c[1] - R * 0.34))
         self.text.blit(s, "KNOTS", 11, GREY, (c[0], c[1] - R * 0.20))
-        w0, w1 = marks["white_arc"]
-        g0, g1 = marks["green_arc"]
-        y0, y1 = marks["yellow_arc"]
-        arc(s, WHITE, c, R - 26, ang(w0), ang(w1), 6)
-        arc(s, GREEN, c, R - 17, ang(g0), ang(g1), 8)
-        arc(s, YELLOW, c, R - 17, ang(y0), ang(y1), 8)
-        pygame.draw.line(s, RED, polar(c, R - 10, ang(marks["red_line"])), polar(c, R - 30, ang(marks["red_line"])), 4)
-        self.ticks(s, c, range(40, 161, 10), ang, R - 10, 12)
-        self.ticks(s, c, range(45, 160, 10), ang, R - 10, 6, 1)
-        for v in range(40, 161, 20):
+        if "white_arc" in marks:
+            arc(s, WHITE, c, R - 26, ang(marks["white_arc"][0]), ang(marks["white_arc"][1]), 6)
+        for name, colour in (("green_arc", GREEN), ("yellow_arc", YELLOW)):
+            if name in marks:
+                arc(s, colour, c, R - 17, ang(marks[name][0]), ang(marks[name][1]), 8)
+        if "red_line" in marks:
+            pygame.draw.line(s, RED, polar(c, R - 10, ang(marks["red_line"])), polar(c, R - 30, ang(marks["red_line"])), 4)
+        if vmax_kt is not None:  # red and white stripes from the limit speed to the end of the scale
+            a0, a1 = ang(vmax_kt), ang(hi)
+            n = max(1, int((a1 - a0) / 4))
+            for i in range(n):
+                arc(s, RED if i % 2 == 0 else WHITE, c, R - 17, a0 + (a1 - a0) * i / n, a0 + (a1 - a0) * (i + 1) / n, 8)
+        first = lo + tick
+        self.ticks(s, c, range(first, hi, tick), ang, R - 10, 12)
+        self.ticks(s, c, range(first + tick // 2, hi - tick, tick), ang, R - 10, 6, 1)
+        for v in range(first + (label - first % label) % label, hi, label):
             self.text.blit(s, str(v), 14, WHITE, polar(c, R - 42, ang(v)))
         needle(s, c, R - 14, ang(kt))
 
@@ -193,23 +202,26 @@ class Gauges:
 
     # --- Vertical speed ------------------------------------------------------------------
 
-    @staticmethod
-    def vsi_angle(fpm: float) -> float:
-        return 270.0 + max(-2000.0, min(2000.0, fpm)) / 2000.0 * 160.0
-
-    def vertical_speed(self, s, c, fpm: float) -> None:
+    def vertical_speed(self, s, c, fpm: float, full_scale: int = 2000) -> None:
+        """2000 fpm full scale reads in hundreds (5, 10, 15, 20); 4000 in thousands (1 to 4)."""
         R = self.R
+
+        def ang(v: float) -> float:
+            return 270.0 + max(-full_scale, min(full_scale, v)) / full_scale * 160.0
+
+        unit = 100 if full_scale <= 2000 else 1000
         self.face(s, c)
         self.text.blit(s, "VERTICAL SPEED", 10, GREY, (c[0] + 8, c[1] - R * 0.28))
-        self.text.blit(s, "100 FT PER MIN", 10, GREY, (c[0] + 8, c[1] + R * 0.28))
+        self.text.blit(s, f"{unit} FT PER MIN", 10, GREY, (c[0] + 8, c[1] + R * 0.28))
         self.text.blit(s, "UP", 11, WHITE, (c[0] - R * 0.25, c[1] - R * 0.52))
         self.text.blit(s, "DN", 11, WHITE, (c[0] - R * 0.25, c[1] + R * 0.52))
-        self.ticks(s, c, range(-2000, 2001, 500), self.vsi_angle, R - 10, 13, 3)
-        self.ticks(s, c, range(-1900, 2000, 100), self.vsi_angle, R - 10, 6, 1)
-        for v in (0, 5, 10, 15, 20):
+        major, minor = full_scale // 4, full_scale // 20
+        self.ticks(s, c, range(-full_scale, full_scale + 1, major), ang, R - 10, 13, 3)
+        self.ticks(s, c, range(-full_scale + minor, full_scale, minor), ang, R - 10, 6, 1)
+        for v in range(0, full_scale + 1, major):
             for sign in ((1, -1) if v else (1,)):
-                self.text.blit(s, str(v), 15, WHITE, polar(c, R - 32, self.vsi_angle(sign * v * 100)))
-        needle(s, c, R - 14, self.vsi_angle(fpm))
+                self.text.blit(s, f"{v / unit:g}", 15, WHITE, polar(c, R - 32, ang(sign * v)))
+        needle(s, c, R - 14, ang(fpm))
 
     # --- VOR / LOC indicator -------------------------------------------------------------
 
@@ -271,6 +283,24 @@ class Gauges:
         tip = polar(c, R - 20, a)
         pygame.draw.line(s, YELLOW, polar(c, -(R - 30), a), tip, 4)
         pygame.draw.polygon(s, YELLOW, [tip, polar(c, R - 36, a - 5), polar(c, R - 36, a + 5)])
+
+    # --- Fan speed (N1) ------------------------------------------------------------------
+
+    @staticmethod
+    def n1_angle(pct: float) -> float:
+        return -125.0 + min(max(pct, 0.0), 110.0) / 110.0 * 250.0
+
+    def n1(self, s, c, pct: float, red_line: float) -> None:
+        R = self.R
+        self.face(s, c, "N1 % RPM")
+        ang = self.n1_angle
+        pygame.draw.line(s, RED, polar(c, R - 10, ang(red_line)), polar(c, R - 30, ang(red_line)), 4)
+        self.ticks(s, c, range(0, 111, 10), ang, R - 10, 12)
+        self.ticks(s, c, range(5, 110, 10), ang, R - 10, 5, 1)
+        for v in range(0, 111, 20):
+            self.text.blit(s, str(v), 14, WHITE, polar(c, R - 36, ang(v)))
+        self.text.blit(s, f"{pct:5.1f}", 14, AMBER if pct > red_line else GREEN, (c[0], c[1] + R * 0.62))
+        needle(s, c, R - 14, ang(pct))
 
     # --- Tachometer ----------------------------------------------------------------------
 

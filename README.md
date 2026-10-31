@@ -9,6 +9,9 @@ engines, flight controls and displays:
 * **Cessna 172P** (`--aircraft c172`): built from openly available data (JSBSim's `c172p`
   model and the C172P published figures), with direct controls, manual trim, a piston
   engine with a fixed-pitch propeller, and steam gauges.
+* **Business jet** (`--aircraft citation`): a generic light jet on Cessna Citation II data
+  (TU Delft's PH-LAB research aircraft: flight-test derivatives and measured drag), with
+  direct controls, manual trim, two turbofans, speedbrakes and round dials.
 
 Every exercise is flown in cloud and starts in the air. Approaches end with a
 go-around on instruments at the minimum; there is no takeoff or landing.
@@ -29,12 +32,14 @@ uv run ifr-trainer --list-aircraft
 uv run ifr-trainer --list-scenarios     # for the chosen aircraft (--aircraft a320)
 uv run ifr-trainer --aircraft a320 --scenario vor36
 uv run ifr-trainer --aircraft c172 --scenario ils36
+uv run ifr-trainer --aircraft citation --scenario ils36_established
 ```
 
 Scenarios include ILS (with and without crosswind), VOR/DME and NDB approaches,
 VOR radial tracking and a hold. At the minimum ("MINIMUM" on the PFD and the
 altitude digits turn amber), go around: TOGA, pitch to about 15°, gear up, flaps
-one step (C172: full throttle, pitch up, flaps 20 then up). The go-around is scored
+one step (C172: full throttle, pitch up, flaps 20 then up; business jet: full thrust,
+10° nose up, flaps 15, gear up once climbing). The go-around is scored
 by how far you sank below the minimum.
 
 ## Displays (A320)
@@ -58,7 +63,13 @@ by how far you sank below the minimum.
   radio stack (NAV1, NAV2, ADF, heading bug, minimum). The mouse wheel over NAV1 or
   NAV2 turns its OBS, over the heading indicator it moves the bug.
 
-In the Cessna the stick moves the surfaces directly. Trim off every steady pressure with
+## Displays (business jet)
+
+The same round-dial panel, with a jet airspeed indicator (white flap arc, barber pole at
+VMO / MMO), an N1 gauge, a 4000 fpm vertical speed scale, and GEAR DOWN / GEAR UNSAFE and
+SPD BRK lights.
+
+In the Cessna and the jet the stick moves the surfaces directly. Trim off every steady pressure with
 `[` and `]`; power controls altitude, pitch and trim control speed. The trainer has no
 rudder pedals: an automatic rudder keeps the ball centred.
 
@@ -81,7 +92,7 @@ hardware throttle ("MOVE THR").
 | W / S | thrust lever up / down |
 | 1 2 3 … | thrust lever to the aircraft's detents (A320: IDLE / CL / MCT / TOGA) |
 | F / Shift+F | flaps extend / retract |
-| [ / ] | pitch trim nose down / up, hold (C172; joystick buttons `trim_nose_down` / `trim_nose_up`) |
+| [ / ] | pitch trim nose down / up, hold (C172 and jet; joystick buttons `trim_nose_down` / `trim_nose_up`) |
 | G | gear |
 | B | speedbrake (RET → 1/2 → FULL) |
 | M / N / L | A320: ND mode / ND range / ILS scales on the PFD |

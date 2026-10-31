@@ -1,24 +1,29 @@
-"""Cessna 172 flight controls: cables and pushrods, no computer between stick and surfaces.
+"""Conventional flight controls: cables and pushrods, no computer between stick and surfaces.
 
-The stick moves the elevator and ailerons directly. Pitch trim is an offset added to the
-elevator (as in JSBSim's c172p), run by the trim switch, so releasing the stick returns
-the aircraft to its trimmed speed. The trainer has no rudder pedals: an automatic rudder
+Shared by the aircraft without fly-by-wire (Cessna 172, Citation). The stick moves the
+elevator and ailerons directly. Pitch trim is an offset added to the elevator (a trim tab,
+as in JSBSim's c172p), run by the trim switch, so releasing the stick returns the aircraft
+to its trimmed speed. The trainer has no rudder pedals: an automatic rudder
 stands in for a pilot who keeps the ball centred (zero sideslip) in turns.
 """
 
 import math
 from dataclasses import replace
 
-from ifr_trainer.sim.aero import AeroConfig, AeroModel, Surfaces
-from ifr_trainer.sim.airframe import Airframe
-from ifr_trainer.sim.flight_model import AircraftState
-from ifr_trainer.sim.units import DEG, G
+from .aero import AeroConfig, AeroModel, Surfaces
+from .airframe import Airframe
+from .flight_model import AircraftState
+from .units import DEG, G
 
 MIN_DYNAMIC_PRESSURE = 50.0  # Pa; below this the automatic rudder holds still
 
 
 def _toward(value: float, target: float, max_step: float) -> float:
     return value + max(-max_step, min(max_step, target - value))
+
+
+def _shape(stick: float, expo: float) -> float:
+    return (1.0 - expo) * stick + expo * stick**3
 
 
 class DirectControls:
@@ -49,10 +54,11 @@ class DirectControls:
         surfaces.pitch_trim = max(-lim.pitch_trim_down_deg * DEG, min(lim.pitch_trim_up_deg * DEG, surfaces.pitch_trim + trim_step))
 
         # The stick moves the elevator around the trimmed position; full stick still reaches the stops.
-        stick = inputs.stick_pitch * (up if inputs.stick_pitch > 0 else down)
+        pitch, roll = _shape(inputs.stick_pitch, lim.stick_expo), _shape(inputs.stick_roll, lim.stick_expo)
+        stick = pitch * (up if pitch > 0 else down)
         elevator = max(-down, min(up, surfaces.pitch_trim + stick)) - surfaces.pitch_trim
         surfaces.elevator = _toward(surfaces.elevator, elevator, lim.elevator_rate_deg_s * DEG * dt)
-        surfaces.aileron = _toward(surfaces.aileron, inputs.stick_roll * lim.aileron_deg * DEG, lim.aileron_rate_deg_s * DEG * dt)
+        surfaces.aileron = _toward(surfaces.aileron, roll * lim.aileron_deg * DEG, lim.aileron_rate_deg_s * DEG * dt)
         surfaces.rudder = _toward(surfaces.rudder, self._auto_rudder(s, surfaces, cfg, mass), lim.rudder_rate_deg_s * DEG * dt)
 
     def _auto_rudder(self, s: AircraftState, surfaces: Surfaces, cfg: AeroConfig, mass: float) -> float:

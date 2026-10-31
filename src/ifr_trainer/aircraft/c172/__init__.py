@@ -6,9 +6,9 @@ from ifr_trainer.data_files import load_toml
 from ifr_trainer.sim.aero import AeroModel
 from ifr_trainer.sim.aircraft import Aircraft
 from ifr_trainer.sim.airframe import Airframe
+from ifr_trainer.sim.cockpit import Nav1Cockpit
+from ifr_trainer.sim.direct_controls import DirectControls
 
-from .cockpit import C172Cockpit
-from .controls import DirectControls
 from .piston import PistonData, PistonPropeller
 
 if TYPE_CHECKING:
@@ -33,8 +33,8 @@ class C172(Aircraft):
     def new_flight_controls(self, aero: AeroModel) -> DirectControls:
         return DirectControls(self.airframe, aero)
 
-    def new_cockpit(self, settings: dict) -> C172Cockpit:
-        return C172Cockpit(**settings)
+    def new_cockpit(self, settings: dict) -> Nav1Cockpit:
+        return Nav1Cockpit(**settings)
 
     def new_panel(self, text: "Text") -> "C172Panel":
         from .displays.panel import C172Panel  # pygame is only needed with a window

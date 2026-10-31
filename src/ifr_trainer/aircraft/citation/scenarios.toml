@@ -1,0 +1,52 @@
+# Business jet (Citation II data) settings for the shared scenarios (ifr_trainer/data/scenarios.toml):
+# speed, flaps (0 = up, 1 = 15 deg, 2 = 40 deg) and gear. NAV1 (vor1_*) tunes the localizer for
+# ILS approaches; NAV2 (vor2_*) keeps TRN. Typical speeds at mid weight (VREF about 108 kt):
+# 180 kt clean on vectors and in the hold, 140 kt with flaps 15 and gear down for a
+# non-precision approach, VREF + 10 = 118 kt with flaps 40 on the ILS.
+
+[ils36]
+cas_kt = 180.0
+[ils36.cockpit]
+vor1_mhz = 110.30
+vor1_crs = 360.0
+
+[ils36_established]
+cas_kt = 118.0
+flaps = 2
+gear_down = true
+[ils36_established.cockpit]
+vor1_mhz = 110.30
+vor1_crs = 360.0
+
+[ils36_xwind]
+cas_kt = 118.0
+flaps = 2
+gear_down = true
+[ils36_xwind.cockpit]
+vor1_mhz = 110.30
+vor1_crs = 360.0
+
+[ils18]
+cas_kt = 180.0
+[ils18.cockpit]
+vor1_mhz = 109.50
+vor1_crs = 180.0
+
+[vor36]
+cas_kt = 140.0
+flaps = 1
+gear_down = true
+
+[ndb36]
+cas_kt = 140.0
+flaps = 1
+gear_down = true
+
+[vor_tracking]
+cas_kt = 200.0
+
+[hold_trn]
+cas_kt = 180.0
+
+[upper_air]
+cas_kt = 250.0
