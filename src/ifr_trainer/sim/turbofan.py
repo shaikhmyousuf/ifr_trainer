@@ -58,7 +58,7 @@ class Turbofan:
                 return y0 + (y1 - y0) * (lever - x0) / (x1 - x0)
         return table[-1][1]
 
-    def step(self, dt: float, lever: float) -> None:
+    def step(self, dt: float, lever: float, air: Air | None = None, mach: float = 0.0) -> None:
         d = self.data
         target = self.lever_to_n1(lever)
         rate = (target - self.n1) / d.spool_tau_s
@@ -68,7 +68,7 @@ class Turbofan:
             rate = max(rate, -d.decel_rate)
         self.n1 += rate * dt
 
-    def set_steady(self, lever: float) -> None:
+    def set_steady(self, lever: float, air: Air | None = None, mach: float = 0.0) -> None:
         self.n1 = self.lever_to_n1(lever)
 
     def thrust_at(self, n1: float, air: Air, mach: float) -> float:

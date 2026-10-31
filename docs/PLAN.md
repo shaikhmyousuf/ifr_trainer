@@ -3,7 +3,8 @@
 A lightweight instrument-flying trainer for practising **hand flying**. Aircraft
 are **modules**: they share one environment but each has its own handling, engines,
 flight controls and displays. The first module is loosely based on the A320; a
-Cessna 172 and a generic jet are planned. Not a certified training device.
+Cessna 172P module is built from open data; a generic jet is planned. Not a certified
+training device.
 
 **Scope: instrument flying only.** Every exercise starts in the air and is flown
 in cloud. Approaches end at the minimum with a go-around on instruments. Takeoff,
@@ -15,7 +16,7 @@ coordinates turns automatically).
 | Topic | Decision |
 |---|---|
 | Purpose | Hand flying under IFR: raw-data approaches to minima and go-around, holds, tracking, partial panel. No autopilot, no takeoff or landing. |
-| Aircraft | Modular: A320 (done), Cessna 172 and a generic jet (planned) in the same environment |
+| Aircraft | Modular: A320 and Cessna 172P (done), a generic jet (planned), in the same environment |
 | Controls | Joystick (sidestick); keyboard fallback for testing |
 | Flight model | Our own, written in Python — no compiled flight dynamics library |
 | Rendering | pygame-ce, 2D only. No outside view (we are in cloud) |
@@ -53,14 +54,14 @@ src/ifr_trainer/
 
 **The aircraft interface** (`sim/aircraft.py`). The simulation asks an aircraft for:
 
-| Part | A320 | Cessna 172 (planned) |
+| Part | A320 | Cessna 172P |
 |---|---|---|
-| Airframe data (`aircraft.toml`, shared format) | approximate A320-200 | C172 figures |
-| Engines (`Propulsion`) | `Turbofan` (shared) | piston engine and propeller |
-| Flight controls (`FlightControls`) | normal law by dynamic inversion | direct: stick moves the surfaces, manual trim |
-| Cockpit state | radios + EFIS settings | radios + OBS / heading bug |
-| Panel (displays) | PFD, ND, lower panel | six-pack and radio stack |
-| Scenario settings (`scenarios.toml`) | speeds, CONF, ND modes | speeds, flaps |
+| Airframe data (`aircraft.toml`, shared format) | approximate A320-200 | JSBSim `c172p` |
+| Engines (`Propulsion`) | `Turbofan` (shared) | piston engine, fixed-pitch propeller (JSBSim `prop_75in2f`), RPM as a state |
+| Flight controls (`FlightControls`) | normal law by dynamic inversion | direct: stick moves the surfaces, manual trim, automatic rudder |
+| Cockpit state | radios + EFIS settings | radios (NAV1 tunes VOR or ILS) |
+| Panel (displays) | PFD, ND, lower panel | six-pack, NAV1/NAV2/ADF, tachometer, radio stack |
+| Scenario settings (`scenarios.toml`) | speeds, CONF, ND modes | speeds, flaps, NAV1 on the localizer |
 
 Scenarios are split the same way: `data/scenarios.toml` holds the exercise (position,
 altitude, wind, radios, minimum); each aircraft adds how it flies it. The A320's
@@ -85,6 +86,26 @@ Data is approximate A320-200: 64 t, wing area 122.6 m², CFM56-class engines,
 CONF 0/1/2/3/FULL. It is tuned against figures such as about 3° nose-up pitch at
 Vapp on a 3° glidepath, approach N1 around 55–60 %, and VLS in CONF FULL around
 133 kt at 64 t.
+
+## Cessna 172P data
+
+Sources: JSBSim `aircraft/c172p`, `engine/eng_io320` and `engine/prop_75in2f`
+(github.com/JSBSim-Team/jsbsim), and the C172P published figures (2400 lb, 160 BHP at
+2700 RPM, VNE 158, VNO 127, VFE 110 / 85 KIAS, stall 51 / 46 KCAS, 700 fpm, 123 kt).
+
+* **Taken directly from JSBSim**: geometry, inertia, lift curve (C<sub>Lα</sub> 4.41,
+  C<sub>Lmax</sub> 1.47 at 16°), flap lift, drag and pitching moment, all moment and side-force
+  derivatives, control travel, propeller thrust and power tables, engine manifold pressure.
+  JSBSim's aerodynamic reference point (2.2 in behind the CG) is folded into C<sub>m</sub>.
+* **Fitted to the published performance**: the drag polar (C<sub>D0</sub> 0.035, e 0.90) and an
+  engine friction term that grows with RPM². JSBSim's own drag table used in this linear model
+  gave 137 kt and 420 fpm.
+* **Result vs the C172P book**: full throttle 124 kt (123), climb 630 fpm at 74 kt (700),
+  static 2240 RPM (2300 to 2420), stall 52.6 / 47.3 KCAS (51 / 46), 72% power at 8000 ft.
+  Best climb comes at about 84 kt rather than 74: JSBSim's propeller is relatively
+  inefficient at low speed.
+* **Not modelled**: propeller wash on the tail, P-factor and torque (the automatic rudder
+  hides them), mixture, carburettor icing, gyro precession.
 
 ## Airport XIFR — Trainer Field (fictional)
 

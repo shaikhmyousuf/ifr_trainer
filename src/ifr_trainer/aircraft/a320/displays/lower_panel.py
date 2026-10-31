@@ -6,12 +6,10 @@ decreases, right half increases (or cycles for choices).
 
 import math
 import time
-from dataclasses import dataclass
-from typing import Callable
-
 import pygame
 
 from ifr_trainer.displays.common import AMBER, CYAN, GREEN, GREY, RED, WHITE, Text
+from ifr_trainer.displays.fields import Field, change_altitude, change_minimum, course_field, cycle, freq_field
 from ifr_trainer.nav.navaids import Ils, Vor
 from ifr_trainer.nav.receivers import NavReadings
 from ifr_trainer.sim.simulation import Simulation
@@ -23,51 +21,6 @@ BACKGROUND = (18, 18, 24)
 FIELD_BG = (35, 35, 45)
 FIELD_HOVER = (55, 55, 70)
 N1_MAX_SCALE = 110.0
-
-
-def _cycle(options: tuple, current, direction: int):
-    return options[(options.index(current) + direction) % len(options)]
-
-
-def _wrap_deg(value: float) -> float:
-    v = value % 360.0
-    return 360.0 if v == 0.0 else v
-
-
-@dataclass
-class Field:
-    label: str
-    rect: pygame.Rect  # value box, panel coordinates
-    show: Callable[[A320Cockpit], str]
-    change: Callable[[A320Cockpit, int, bool], None]  # (cockpit, direction, coarse)
-
-
-def _freq_field(attr: str, lo: float, hi: float, fine: float, coarse: float):
-    def change(c: A320Cockpit, direction: int, big: bool) -> None:
-        value = getattr(c, attr) + direction * (coarse if big else fine)
-        span = hi - lo + fine
-        setattr(c, attr, round(lo + (value - lo) % span, 2))
-
-    return change
-
-
-def _course_field(attr: str):
-    def change(c: A320Cockpit, direction: int, big: bool) -> None:
-        setattr(c, attr, _wrap_deg(round(getattr(c, attr)) + direction * (10 if big else 1)))
-
-    return change
-
-
-def _change_altitude(c: A320Cockpit, direction: int, big: bool) -> None:
-    c.alt_target_ft = min(max(c.alt_target_ft + direction * (1000 if big else 100), 0.0), 39000.0)
-
-
-def _change_minimum(c: A320Cockpit, direction: int, big: bool) -> None:
-    if c.minimum_ft is None:
-        c.minimum_ft = 700.0
-        return
-    value = c.minimum_ft + direction * (100 if big else 10)
-    c.minimum_ft = None if value < 500 else value
 
 
 class LowerPanel:
@@ -87,31 +40,31 @@ class LowerPanel:
         for row, (label, freq, crs, lo, hi) in enumerate(radios):
             y = 28 + row * 26
             f.append(Field(label, pygame.Rect(x_freq, y, w_freq, h), lambda c, a=freq: f"{getattr(c, a):6.2f}",
-                           _freq_field(freq, lo, hi, 0.05, 1.0)))
+                           freq_field(freq, lo, hi, 0.05, 1.0)))
             f.append(Field("CRS", pygame.Rect(x_crs, y, w_crs, h), lambda c, a=crs: f"{getattr(c, a) % 360:03.0f}",
-                           _course_field(crs)))
+                           course_field(crs)))
         y = 28 + 3 * 26
         f.append(Field("ADF1", pygame.Rect(x_freq, y, w_crs, h), lambda c: f"{c.adf1_khz:4.0f}",
-                       _freq_field("adf1_khz", 190.0, 1750.0, 1.0, 10.0)))
+                       freq_field("adf1_khz", 190.0, 1750.0, 1.0, 10.0)))
         f.append(Field("ADF2", pygame.Rect(x_crs + 34, y, w_crs, h), lambda c: f"{c.adf2_khz:4.0f}",
-                       _freq_field("adf2_khz", 190.0, 1750.0, 1.0, 10.0)))
+                       freq_field("adf2_khz", 190.0, 1750.0, 1.0, 10.0)))
 
         def efis(label, x, y, w, show, change):
             f.append(Field(label, pygame.Rect(x, y, w, h), show, change))
 
         xa, xb = 975, 1135
         efis("ND", xa, 28, 100, lambda c: c.nd_mode,
-             lambda c, d, big: setattr(c, "nd_mode", _cycle(ND_MODES, c.nd_mode, d)))
+             lambda c, d, big: setattr(c, "nd_mode", cycle(ND_MODES, c.nd_mode, d)))
         efis("RNG", xa, 54, 100, lambda c: f"{c.nd_range} NM",
              lambda c, d, big: setattr(c, "nd_range", ND_RANGES[min(max(ND_RANGES.index(c.nd_range) + d, 0), len(ND_RANGES) - 1)]))
         efis("NDL1", xa, 80, 100, lambda c: c.needle1,
-             lambda c, d, big: setattr(c, "needle1", _cycle(NEEDLE1, c.needle1, d)))
+             lambda c, d, big: setattr(c, "needle1", cycle(NEEDLE1, c.needle1, d)))
         efis("NDL2", xa, 106, 100, lambda c: c.needle2,
-             lambda c, d, big: setattr(c, "needle2", _cycle(NEEDLE2, c.needle2, d)))
+             lambda c, d, big: setattr(c, "needle2", cycle(NEEDLE2, c.needle2, d)))
         efis("LS", xb, 28, 76, lambda c: "ON" if c.ls else "OFF", lambda c, d, big: setattr(c, "ls", not c.ls))
-        efis("HDG", xb, 54, 76, lambda c: f"{c.hdg_bug % 360:03.0f}", _course_field("hdg_bug"))
-        efis("ALT", xb, 80, 76, lambda c: f"{c.alt_target_ft:.0f}", _change_altitude)
-        efis("MIN", xb, 106, 76, lambda c: "----" if c.minimum_ft is None else f"{c.minimum_ft:.0f}", _change_minimum)
+        efis("HDG", xb, 54, 76, lambda c: f"{c.hdg_bug % 360:03.0f}", course_field("hdg_bug"))
+        efis("ALT", xb, 80, 76, lambda c: f"{c.alt_target_ft:.0f}", change_altitude)
+        efis("MIN", xb, 106, 76, lambda c: "----" if c.minimum_ft is None else f"{c.minimum_ft:.0f}", change_minimum)
         return f
 
     # --- Input -------------------------------------------------------------------------

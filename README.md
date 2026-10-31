@@ -2,10 +2,17 @@
 
 A lightweight instrument-flying trainer for hand flying. Aircraft are modules that share
 one environment (airport, navaids, weather, physics) but bring their own handling,
-engines, flight controls and displays. The first module is loosely based on the A320.
+engines, flight controls and displays:
+
+* **A320** (`--aircraft a320`, default): loosely based on the A320, with a fly-by-wire
+  normal law, PFD and ND.
+* **Cessna 172P** (`--aircraft c172`): built from openly available data (JSBSim's `c172p`
+  model and the C172P published figures), with direct controls, manual trim, a piston
+  engine with a fixed-pitch propeller, and steam gauges.
+
 Every exercise is flown in cloud and starts in the air. Approaches end with a
 go-around on instruments at the minimum; there is no takeoff or landing.
-It is loosely based on the A320, not a replica, and not a certified training device.
+It is not a certified training device.
 See [docs/PLAN.md](docs/PLAN.md) for the design and milestones.
 
 ## Setup
@@ -21,12 +28,14 @@ uv run ifr-trainer                      # default: A320, vectors for ILS 36
 uv run ifr-trainer --list-aircraft
 uv run ifr-trainer --list-scenarios     # for the chosen aircraft (--aircraft a320)
 uv run ifr-trainer --aircraft a320 --scenario vor36
+uv run ifr-trainer --aircraft c172 --scenario ils36
 ```
 
 Scenarios include ILS (with and without crosswind), VOR/DME and NDB approaches,
 VOR radial tracking and a hold. At the minimum ("MINIMUM" on the PFD and the
 altitude digits turn amber), go around: TOGA, pitch to about 15°, gear up, flaps
-one step. The go-around is scored by how far you sank below the minimum.
+one step (C172: full throttle, pitch up, flaps 20 then up). The go-around is scored
+by how far you sank below the minimum.
 
 ## Displays (A320)
 
@@ -38,6 +47,20 @@ one step. The go-around is scored by how far you sank below the minimum.
 * **Lower panel**: engines, flaps, gear, speedbrake, pitch trim, and the nav radios
   and EFIS/FCU settings. Hover a field and use the mouse wheel to change it
   (Shift = coarse), or click its left/right half for −/+.
+
+## Displays (C172)
+
+* **Six-pack**: airspeed (white, green and yellow arcs, red line), attitude, altimeter,
+  turn coordinator with ball, heading indicator with heading bug, vertical speed.
+* **NAV1**: VOR or localizer with glideslope (5 dots each side), DME. **NAV2**: VOR.
+  **ADF**: relative bearing. **Tachometer**.
+* **Lower panel**: throttle, flaps, trim position, STALL and MINIMUM lights, and the
+  radio stack (NAV1, NAV2, ADF, heading bug, minimum). The mouse wheel over NAV1 or
+  NAV2 turns its OBS, over the heading indicator it moves the bug.
+
+In the Cessna the stick moves the surfaces directly. Trim off every steady pressure with
+`[` and `]`; power controls altitude, pitch and trim control speed. The trainer has no
+rudder pedals: an automatic rudder keeps the ball centred.
 
 ## Controls
 
@@ -58,6 +81,7 @@ hardware throttle ("MOVE THR").
 | W / S | thrust lever up / down |
 | 1 2 3 … | thrust lever to the aircraft's detents (A320: IDLE / CL / MCT / TOGA) |
 | F / Shift+F | flaps extend / retract |
+| [ / ] | pitch trim nose down / up, hold (C172; joystick buttons `trim_nose_down` / `trim_nose_up`) |
 | G | gear |
 | B | speedbrake (RET → 1/2 → FULL) |
 | M / N / L | A320: ND mode / ND range / ILS scales on the PFD |

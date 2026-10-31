@@ -109,8 +109,8 @@ def run(aircraft: Aircraft, scenario: Scenario, controls_path: Path | None) -> N
         pygame.display.flip()
 
 
-def describe(sc: Scenario) -> str:
-    return f"{sc.name:16s} {sc.description} ({sc.cas_kt:.0f} kt, flaps {sc.flaps})"
+def describe(sc: Scenario, aircraft: Aircraft) -> str:
+    return f"{sc.name:18s} {sc.description} ({sc.cas_kt:.0f} kt, flaps {aircraft.airframe.flaps[sc.flaps].name})"
 
 
 def main() -> None:
@@ -134,7 +134,7 @@ def main() -> None:
     scenarios = load_scenarios(aircraft)
     if args.list_scenarios:
         for sc in scenarios.values():
-            print(describe(sc))
+            print(describe(sc, aircraft))
     elif args.scenario not in scenarios:
         raise SystemExit(f"unknown scenario {args.scenario!r} for {aircraft.id}; try --list-scenarios")
     else:

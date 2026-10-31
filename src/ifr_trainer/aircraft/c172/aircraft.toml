@@ -1,0 +1,135 @@
+# Cessna 172P Skyhawk, from openly available data:
+#  * JSBSim aircraft/c172p (aerodynamics, geometry, inertia, control travel, flaps)
+#    and engine/prop_75in2f (propeller thrust and power coefficients), github.com/JSBSim-Team/jsbsim
+#  * Cessna 172P published figures: 2400 lb maximum weight, 160 BHP at 2700 RPM, speed limits
+# Converted to SI and to this simulator's linear model; see the notes on each value.
+# Body axes: x forward, y right, z down. Control signs are pilot sense: + elevator / pitch trim =
+# nose up, + aileron = roll right, + rudder = nose right (JSBSim uses trailing-edge-down positive
+# for the elevator, so its elevator signs are flipped here).
+name = "Cessna 172P (JSBSim data)"
+mass_kg = 1088.6            # 2400 lb, maximum takeoff and landing weight
+wing_area_m2 = 16.165       # 174 ft^2
+span_m = 10.912             # 35.8 ft
+mac_m = 1.4935              # 4.9 ft
+cl_alpha_per_rad = 4.41     # JSBSim CL table slope from alpha 0 to the stall (Roskam: 4.41)
+cl0 = 0.25                  # JSBSim CL at alpha 0
+# Drag polar fitted to the published performance (123 kt at full throttle at sea level, 700 fpm
+# climb) with JSBSim's propeller. JSBSim's own CDo 0.027 and CD(alpha) table (e = 0.51) model
+# propeller wash and other effects separately; used in this linear model they give a 137 kt top
+# speed and a 420 fpm climb. Result: 124 kt, 630 fpm, stall 52.6 / 47.3 KCAS (POH 51 / 46).
+cd0 = 0.035
+oswald = 0.90
+vmo_kt = 158.0              # VNE (red line)
+
+[inertia]                   # JSBSim 948 / 1346 / 1967 slug ft^2
+ixx = 1285.3
+iyy = 1824.9
+izz = 2666.9
+
+[aero]
+cl_q = 3.9
+cl_elevator = -0.43         # JSBSim CLde 0.43, trailing edge down positive
+cl_pitch_trim = -0.43       # trim is an elevator offset, as in JSBSim's flight control system
+cl_min = -0.6
+cl_post_stall_slope = -4.0  # JSBSim CL falls from 1.47 at 16 deg to 1.15 at 20.6 deg
+# Pitch: JSBSim's Cmo 0.10 and Cmalpha -1.8, with its aerodynamic reference point 2.2 in
+# behind the CG folded in (lift there adds -0.037 CL to Cm).
+cm0 = 0.091
+cm_alpha = -1.965
+cm_q = -12.4
+cm_alphadot = -7.27
+cm_elevator = 1.122         # JSBSim Cmde -1.122 (propeller-wash scaling not modelled)
+cm_pitch_trim = 1.122
+cy_beta = -0.393            # JSBSim CYb 0.137 per 0.349 rad
+cy_rudder = -0.187
+roll_beta = -0.0923         # JSBSim Clb 0.0322 per 0.349 rad
+roll_p = -0.484
+roll_r = 0.0798
+roll_aileron = 0.229
+roll_rudder = -0.0147
+yaw_beta = 0.0587           # JSBSim Cnb 0.0205 per 0.349 rad
+yaw_p = -0.0278
+yaw_r = -0.0937
+yaw_aileron = -0.0053       # adverse yaw
+yaw_rudder = 0.043
+cd_beta = 0.5               # JSBSim uses 0.17 |beta|; similar over the small sideslips flown here
+
+[controls]                  # JSBSim c172p surface travel
+elevator_up_deg = 28.0
+elevator_down_deg = 23.0
+aileron_deg = 17.5          # 20 up / 15 down, averaged
+rudder_deg = 16.0
+# Pitch trim as an elevator-equivalent offset, run by the trim switch ([ and ]).
+pitch_trim_up_deg = 18.0
+pitch_trim_down_deg = 10.0
+pitch_trim_rate_deg_s = 1.0
+# Cables and pushrods: the surfaces follow the stick. Only the automatic rudder is limited.
+elevator_rate_deg_s = 200.0
+aileron_rate_deg_s = 200.0
+rudder_rate_deg_s = 60.0
+
+[gear]                      # fixed tricycle gear; its drag is part of CDo
+cd = 0.0
+vle_kt = 158.0
+transit_s = 1.0
+height_m = 1.32             # JSBSim main wheels 52 in below the CG
+retractable = false
+
+[flaps]
+transit_s_per_step = 2.0    # electric flaps, 10 degrees per step
+
+# 0, 10, 20, 30 degrees. JSBSim CLDf, CDDf and Cmdf (plus the reference-point offset for the
+# extra lift). The stall angle stays near 16 degrees, so CLmax rises with the flap lift.
+[[flaps.configs]]
+name = "0"
+cl0_delta = 0.0
+cl_max = 1.47
+cd0_delta = 0.0
+cm0_delta = 0.0
+
+[[flaps.configs]]
+name = "10"
+cl0_delta = 0.20
+cl_max = 1.67
+cd0_delta = 0.007
+cm0_delta = -0.0729
+vfe_kt = 110.0
+
+[[flaps.configs]]
+name = "20"
+cl0_delta = 0.30
+cl_max = 1.77
+cd0_delta = 0.012
+cm0_delta = -0.1093
+vfe_kt = 85.0
+
+[[flaps.configs]]
+name = "30"
+cl0_delta = 0.35
+cl_max = 1.82
+cd0_delta = 0.018
+cm0_delta = -0.1271
+vfe_kt = 85.0
+
+[speeds]                    # airspeed indicator markings, Cessna 172P (knots)
+white_arc = [40.0, 85.0]
+green_arc = [50.0, 127.0]
+yellow_arc = [127.0, 158.0]
+red_line = 158.0
+
+[engine]                    # Lycoming O-320-D2J, 160 BHP at 2700 RPM
+max_power_hp = 160.0
+rated_rpm = 2700.0
+max_map_inhg = 28.5         # JSBSim eng_io320: full throttle at sea level
+idle_map_inhg = 6.0         # gives about 1000 RPM idling on the ground, 1300 RPM gliding at 70 kt
+friction_rpm = 0.2          # friction grows with RPM^2: static 2240 RPM (POH 2300-2420), 72% power at 8000 ft
+prop_diameter_m = 1.905     # 75 in
+inertia_kgm2 = 2.264        # JSBSim propeller 1.67 slug ft^2
+z_m = 0.25                  # JSBSim propeller 9.9 in below the CG
+# JSBSim prop_75in2f: advance ratio J, thrust coefficient, power coefficient
+j_table = [
+  [0.0, 0.073, 0.0660], [0.1, 0.073, 0.0700], [0.2, 0.072, 0.0700], [0.3, 0.071, 0.0660],
+  [0.4, 0.069, 0.0600], [0.5, 0.066, 0.0530], [0.6, 0.062, 0.0501], [0.7, 0.055, 0.0469],
+  [0.8, 0.045, 0.0426], [0.9, 0.034, 0.0360], [1.0, 0.024, 0.0282], [1.1, 0.013, 0.0191],
+  [1.2, -0.006, 0.0155], [1.3, -0.013, 0.0191], [1.4, -0.024, 0.0282], [1.5, -0.034, 0.0360],
+]

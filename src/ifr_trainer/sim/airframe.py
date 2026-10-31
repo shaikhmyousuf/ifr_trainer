@@ -91,6 +91,8 @@ class GearData:
     cd: float
     vle_kt: float
     transit_s: float
+    height_m: float  # main wheels below the CG; the radio altimeter reads wheel height
+    retractable: bool = True
 
 
 @dataclass(frozen=True)

@@ -18,3 +18,5 @@ gear = 6
 speedbrake = 7
 pause = -1
 reset = -1
+trim_nose_up = -1       # held; manual pitch trim (aircraft without auto-trim, e.g. C172)
+trim_nose_down = -1

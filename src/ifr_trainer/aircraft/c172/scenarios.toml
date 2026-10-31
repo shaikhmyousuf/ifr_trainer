@@ -1,0 +1,49 @@
+# Cessna 172 settings for the shared scenarios (ifr_trainer/data/scenarios.toml): speed and
+# flaps (0 = up, 1 = 10 deg, 2 = 20 deg, 3 = 30 deg). NAV1 (vor1_*) tunes the localizer for
+# ILS approaches; NAV2 (vor2_*) keeps TRN. Typical training speeds: 90 kt on vectors and in
+# the hold, 80 kt with 10 deg of flap on the final approach.
+
+[ils36]
+cas_kt = 90.0
+[ils36.cockpit]
+vor1_mhz = 110.30
+vor1_crs = 360.0
+
+[ils36_established]
+cas_kt = 80.0
+flaps = 1
+[ils36_established.cockpit]
+vor1_mhz = 110.30
+vor1_crs = 360.0
+
+[ils36_xwind]
+cas_kt = 80.0
+flaps = 1
+[ils36_xwind.cockpit]
+vor1_mhz = 110.30
+vor1_crs = 360.0
+
+[ils18]
+cas_kt = 90.0
+[ils18.cockpit]
+vor1_mhz = 109.50
+vor1_crs = 180.0
+
+[vor36]
+cas_kt = 90.0
+
+[ndb36]
+cas_kt = 90.0
+
+[vor_tracking]
+cas_kt = 100.0
+
+[hold_trn]
+cas_kt = 90.0
+
+[upper_air]
+description = "Free flight: 25 NM south of the field, 8000 ft, heading 360."
+altitude_ft = 8000.0
+cas_kt = 100.0
+[upper_air.cockpit]
+alt_target_ft = 8000.0

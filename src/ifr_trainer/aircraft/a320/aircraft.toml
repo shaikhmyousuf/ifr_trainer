@@ -68,6 +68,7 @@ rudder_rate_deg_s = 40.0
 cd = 0.020
 vle_kt = 280.0
 transit_s = 10.0
+height_m = 3.0        # main wheels below the CG
 
 [flaps]
 transit_s_per_step = 6.0

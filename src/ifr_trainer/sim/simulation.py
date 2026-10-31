@@ -28,6 +28,7 @@ class PilotInputs:
     flap_lever: int = 0
     gear_down: bool = False
     speedbrake: float = 0.0  # 0 ... 1
+    pitch_trim: float = 0.0  # manual trim switch, held: +1 nose up, -1 nose down (ignored by auto-trim)
 
 
 class Phase(Enum):
@@ -49,7 +50,6 @@ def wind_vector(from_deg: float, speed_kt: float) -> tuple[float, float]:
 
 class Simulation:
     TREND_TAU_S = 1.0
-    WHEEL_HEIGHT_M = 3.0  # main wheels below the CG; the radio altimeter reads wheel height
     GO_AROUND_VS_FPM = 300.0  # climbing this fast after reaching the minimum counts as a go-around
     MAX_DIP_BELOW_MINIMUM_FT = 50.0  # a normal go-around sinks a little below the minimum
 
@@ -73,7 +73,7 @@ class Simulation:
         self.cockpit = self.aircraft.new_cockpit(sc.cockpit)
         self.mass = sc.mass_kg or self.airframe.mass_kg
         self.flap_pos = float(sc.flaps)
-        self.gear_pos = 1.0 if sc.gear_down else 0.0
+        self.gear_pos = 1.0 if sc.gear_down or not self.airframe.gear.retractable else 0.0
         self.surfaces = Surfaces()
         wind_e, wind_n = wind_vector(sc.wind_dir_deg, sc.wind_kt)
         self.wind = (wind_e, wind_n)
@@ -97,7 +97,7 @@ class Simulation:
         s.nz = math.cos(gamma)
         self.model.air_data(s, self.wind_ned)
         self.surfaces.pitch_trim = trim.pitch_trim
-        self.propulsion.set_steady(trim.lever)
+        self.propulsion.set_steady(trim.lever, isa(h), tas / isa(h).speed_of_sound)
         self._thrust = trim.thrust
         self.inputs = PilotInputs(lever=trim.lever, flap_lever=sc.flaps, gear_down=sc.gear_down)
 
@@ -130,8 +130,9 @@ class Simulation:
         cfg = self.aero()
         cas = self.cas_kt
         self.flight_controls.update(dt, inputs, s, self.surfaces, cfg, self.mass, self._thrust, cas, self.flap_pos > 0.01)
-        self.propulsion.step(dt, inputs.lever)
-        self._thrust = self.propulsion.thrust(isa(s.h_m), s.mach)
+        air = isa(s.h_m)
+        self.propulsion.step(dt, inputs.lever, air, s.mach)
+        self._thrust = self.propulsion.thrust(air, s.mach)
         self.model.step(s, cfg, self.surfaces, self.mass, self._thrust, self.wind_ned, dt)
         self.time_s += dt
 
@@ -146,8 +147,9 @@ class Simulation:
         target = float(min(max(inputs.flap_lever, 0), len(ac.flaps) - 1))
         step = dt / ac.flap_transit_s_per_step
         self.flap_pos += max(-step, min(step, target - self.flap_pos))
-        step = dt / ac.gear.transit_s
-        self.gear_pos += max(-step, min(step, (1.0 if inputs.gear_down else 0.0) - self.gear_pos))
+        if ac.gear.retractable:
+            step = dt / ac.gear.transit_s
+            self.gear_pos += max(-step, min(step, (1.0 if inputs.gear_down else 0.0) - self.gear_pos))
         sf = self.surfaces
         sf.speedbrake += max(-dt, min(dt, inputs.speedbrake - sf.speedbrake))
 
@@ -210,7 +212,7 @@ class Simulation:
     @property
     def agl_ft(self) -> float:
         """Radio altitude: height of the main wheels above the ground (flat terrain at field elevation)."""
-        return (self.state.h_m - self.airport.elevation_m - self.WHEEL_HEIGHT_M) / FT
+        return (self.state.h_m - self.airport.elevation_m - self.airframe.gear.height_m) / FT
 
     @property
     def vs_fpm(self) -> float:

@@ -47,6 +47,23 @@ def test_every_scenario_starts_trimmed_and_flies(each_aircraft):
         assert abs(sim.alt_ft - alt - 5 * sim.vs_fpm / 60) < 30, name
 
 
+def test_panel_draws_every_scenario(each_aircraft, monkeypatch):
+    monkeypatch.setenv("SDL_VIDEODRIVER", "dummy")
+    import pygame
+
+    from ifr_trainer.displays.common import Text
+
+    pygame.init()
+    panel = each_aircraft.new_panel(Text())
+    screen = pygame.display.set_mode(panel.size)
+    airport = Airport.load()
+    for name, sc in load_scenarios(each_aircraft).items():
+        sim = Simulation(each_aircraft, airport, sc)
+        fly(sim, 0.5)
+        panel.draw(screen, sim, throttle_needs_sync=True)
+        assert not panel.click(sim, (-100, -100), False), name  # outside the window: not a panel field
+
+
 def test_aircraft_settings_merge_over_shared_scenarios():
     shared = {
         "ils": {"description": "ILS", "runway": "36", "distance_nm": 10.0, "altitude_ft": 3000.0,

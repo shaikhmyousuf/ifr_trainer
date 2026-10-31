@@ -150,6 +150,12 @@ class Controls:
             return None
         return self.joystick.get_axis(m.throttle_axis)
 
+    def _button(self, action: str) -> int:
+        index = self.mapping.buttons.get(action, -1)
+        if self.joystick is None or not 0 <= index < self.joystick.get_numbuttons():
+            return 0
+        return int(self.joystick.get_button(index))
+
     def _axis(self, index: int, invert: bool) -> float:
         if self.joystick is None or not 0 <= index < self.joystick.get_numaxes():
             return 0.0
@@ -178,6 +184,10 @@ class Controls:
         i = self.inputs
         i.stick_pitch = max(-1.0, min(1.0, self._axis(m.pitch_axis, m.pitch_invert) + self._key_pitch + mouse_pitch))
         i.stick_roll = max(-1.0, min(1.0, self._axis(m.roll_axis, m.roll_invert) + self._key_roll + mouse_roll))
+        # Manual pitch trim switch, held: ] or the trim_nose_up button = nose up, [ = nose down.
+        trim = keys[pygame.K_RIGHTBRACKET] - keys[pygame.K_LEFTBRACKET]
+        trim += self._button("trim_nose_up") - self._button("trim_nose_down")
+        i.pitch_trim = float(max(-1, min(1, trim)))
 
         if keys[pygame.K_w] or keys[pygame.K_s]:
             delta = (self.KEY_LEVER_RATE if keys[pygame.K_w] else -self.KEY_LEVER_RATE) * dt
