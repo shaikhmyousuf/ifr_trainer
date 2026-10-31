@@ -83,9 +83,19 @@ handling was verified bit-for-bit identical across the refactor.
    protections (high angle of attack and alpha floor, overspeed, pitch/bank).
 
 Data is approximate A320-200: 64 t, wing area 122.6 m², CFM56-class engines,
-CONF 0/1/2/3/FULL. It is tuned against figures such as about 3° nose-up pitch at
-Vapp on a 3° glidepath, approach N1 around 55–60 %, and VLS in CONF FULL around
-133 kt at 64 t.
+CONF 0/1/2/3/FULL. Airbus publishes no aerodynamic data, so the coefficients are
+estimates, checked in `tests/a320/test_performance.py` against published figures and
+rules of thumb (all at 64 t):
+
+* **Matches**: VS1G 150 kt clean and 108 kt CONF FULL (VLS 133); best lift-to-drag
+  speed within 6 % of green dot from 50 to 75 t; 3.3° nose up and N1 about 55 % at VAPP
+  on a 3° glidepath; idle descent at 250 kt of 2.9° (the 3:1 rule); level idle
+  deceleration about 12 kt per NM; L/D 17.2 at FL350 M0.78.
+* **Fitted**: the thrust density exponent (0.95), to put REC MAX near FL390 and cruise
+  N1 near 83 %. At 0.75 there was 1100 fpm of climb left at FL390.
+* **Known gaps**: the lift slope does not rise with Mach, so cruise angle of attack is
+  about 3.4° (real aircraft about 2.5°); cruise L/D is a little optimistic; low-altitude
+  climb rate at CL thrust (about 4000 fpm at 250 kt, FL100) is unverified.
 
 ## Cessna 172P data
 
