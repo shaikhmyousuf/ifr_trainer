@@ -11,7 +11,7 @@ engines, flight controls and displays:
   engine with a fixed-pitch propeller, and steam gauges.
 * **Business jet** (`--aircraft citation`): a generic light jet on Cessna Citation II data
   (TU Delft's PH-LAB research aircraft: flight-test derivatives and measured drag), with
-  direct controls, manual trim, two turbofans, speedbrakes and round dials.
+  direct controls, manual trim, two turbofans, speedbrakes and a glass cockpit (PFD and ND).
 
 Every exercise is flown in cloud and starts in the air. Approaches end with a
 go-around on instruments at the minimum; there is no takeoff or landing.
@@ -47,6 +47,8 @@ by how far you sank below the minimum.
 * **PFD**: attitude, speed and altitude tapes, VSI, heading with the FCU heading bug,
   altitude target, BARO minimum, and with **LS** on: localizer and glideslope
   scales, ILS course, ident, frequency and DME.
+  With **FPV** on: the flight path vector (the bird), ground-referenced: flight path
+  angle from the horizon and drift from the centre.
 * **ND**: ROSE ILS, ROSE VOR (course pointer, deviation, TO/FROM) and ARC (map),
   two bearing needles (VOR or ADF), wind, GS/TAS, DME.
 * **Lower panel**: engines, flaps, gear, speedbrake, pitch trim, and the nav radios
@@ -65,9 +67,11 @@ by how far you sank below the minimum.
 
 ## Displays (business jet)
 
-The same round-dial panel, with a jet airspeed indicator (white flap arc, barber pole at
-VMO / MMO), an N1 gauge, a 4000 fpm vertical speed scale, and GEAR DOWN / GEAR UNSAFE and
-SPD BRK lights.
+The same PFD, ND and lower panel as the A320 (a separate copy in the jet's package), with
+the differences of an aircraft without fly-by-wire: the speed tape shows the barber pole at
+the lowest of VMO, MMO, VFE and VLE, and below the low-speed cue (1.3 VS1G) the stall warning
+(amber) and the stall (red) for the current configuration; no bank protection marks or
+thrust modes; FLAPS 0 / 15 / 40. The ND keys and fields work as on the A320 (M / N / L / V).
 
 In the Cessna and the jet the stick moves the surfaces directly. Trim off every steady pressure with
 `[` and `]`; power controls altitude, pitch and trim control speed. The trainer has no
@@ -75,11 +79,21 @@ rudder pedals: an automatic rudder keeps the ball centred.
 
 ## Controls
 
-No joystick is needed: the mouse works as a spring-loaded sidestick. With a joystick:
+No joystick is needed: the mouse works as a spring-loaded sidestick. With a joystick, run
+the setup once:
 
-1. `uv run ifr-trainer --joystick-test` shows live axis and button numbers.
-2. Copy `src/ifr_trainer/data/controls.toml`, set your axes and buttons, then run
-   `uv run ifr-trainer --controls my_controls.toml`.
+```
+uv run ifr-trainer --setup-controls
+```
+
+It asks you to move the stick and throttle and press a button or push the hat for each action
+(S skips one; the hat works well for trim),
+then saves your own mapping to `~/.config/ifr-trainer/controls.toml`. The simulator uses that
+file from then on, and the bundled `src/ifr_trainer/data/controls.toml` when there is none, so
+everyone sharing the project keeps their own joystick settings. The file is plain text: edit it
+for `deadzone` and `expo`, or to put a panel action such as `nd_mode` on a button
+(`uv run ifr-trainer --joystick-test` shows live axis and button numbers). Run the setup again
+to redo it. `--controls path/to/file.toml` uses another mapping for one session.
 
 After a reset, the thrust lever stays at the trimmed position until you move the
 hardware throttle ("MOVE THR").
@@ -95,7 +109,7 @@ hardware throttle ("MOVE THR").
 | [ / ] | pitch trim nose down / up, hold (C172 and jet; joystick buttons `trim_nose_down` / `trim_nose_up`) |
 | G | gear |
 | B | speedbrake (RET → 1/2 → FULL) |
-| M / N / L | A320: ND mode / ND range / ILS scales on the PFD |
+| M / N / L / V | A320 and jet: ND mode / ND range / ILS scales / flight path vector on the PFD |
 | P | pause |
 | Ctrl+R | reset scenario |
 | H | help |

@@ -1,4 +1,4 @@
-"""Round "steam gauge" instruments for the round-dial panels (Cessna 172, Citation).
+"""Round "steam gauge" instruments for the Cessna 172 panel.
 
 Every gauge is drawn around a centre (cx, cy) with radius R. Dial angles are measured
 clockwise from 12 o'clock, in degrees.
@@ -27,14 +27,21 @@ def polar(c: tuple[float, float], r: float, deg: float) -> tuple[float, float]:
     return c[0] + r * math.sin(a), c[1] - r * math.cos(a)
 
 
+def aa_lines(s: pygame.Surface, colour, closed: bool, points, width: int) -> None:
+    """Anti-aliased polyline of any width (pygame's aalines is 1 px only)."""
+    pts = list(points)
+    for a, b in zip(pts, pts[1:] + (pts[:1] if closed else [])):
+        pygame.draw.aaline(s, colour, a, b, width)
+
+
 def arc(s: pygame.Surface, colour, c, r: float, a0: float, a1: float, width: int) -> None:
     n = max(2, int(abs(a1 - a0) / 2) + 1)
     pts = [polar(c, r, a0 + (a1 - a0) * i / (n - 1)) for i in range(n)]
-    pygame.draw.lines(s, colour, False, pts, width)
+    aa_lines(s, colour, False, pts, width)
 
 
 def needle(s: pygame.Surface, c, length: float, deg: float, colour=WHITE, width: int = 4, tail: float = 14) -> None:
-    pygame.draw.line(s, colour, polar(c, -tail, deg), polar(c, length, deg), width)
+    pygame.draw.aaline(s, colour, polar(c, -tail, deg), polar(c, length, deg), width)
     pygame.draw.circle(s, GREY, (round(c[0]), round(c[1])), 6)
 
 
@@ -56,13 +63,13 @@ class Gauges:
     def ticks(self, s, c, values, angle, r_out, length, width=2, colour=WHITE) -> None:
         for v in values:
             a = angle(v)
-            pygame.draw.line(s, colour, polar(c, r_out, a), polar(c, r_out - length, a), width)
+            pygame.draw.aaline(s, colour, polar(c, r_out, a), polar(c, r_out - length, a), width)
 
     # --- Airspeed indicator --------------------------------------------------------------
 
-    def airspeed(self, s, c, kt: float, marks: dict, vmax_kt: float | None = None) -> None:
+    def airspeed(self, s, c, kt: float, marks: dict) -> None:
         """``marks``: the aircraft's [speeds] table. ``scale`` = [low, high, tick step, label step];
-        the coloured arcs are optional. ``vmax_kt`` draws a moving barber pole (a jet's VMO/MMO)."""
+        the coloured arcs are optional."""
         R = self.R
         lo, hi, tick, label = marks["scale"]
 
@@ -78,12 +85,7 @@ class Gauges:
             if name in marks:
                 arc(s, colour, c, R - 17, ang(marks[name][0]), ang(marks[name][1]), 8)
         if "red_line" in marks:
-            pygame.draw.line(s, RED, polar(c, R - 10, ang(marks["red_line"])), polar(c, R - 30, ang(marks["red_line"])), 4)
-        if vmax_kt is not None:  # red and white stripes from the limit speed to the end of the scale
-            a0, a1 = ang(vmax_kt), ang(hi)
-            n = max(1, int((a1 - a0) / 4))
-            for i in range(n):
-                arc(s, RED if i % 2 == 0 else WHITE, c, R - 17, a0 + (a1 - a0) * i / n, a0 + (a1 - a0) * (i + 1) / n, 8)
+            pygame.draw.aaline(s, RED, polar(c, R - 10, ang(marks["red_line"])), polar(c, R - 30, ang(marks["red_line"])), 4)
         first = lo + tick
         self.ticks(s, c, range(first, hi, tick), ang, R - 10, 12)
         self.ticks(s, c, range(first + tick // 2, hi - tick, tick), ang, R - 10, 6, 1)
@@ -106,16 +108,16 @@ class Gauges:
         sub.fill(SKY)
         a, b = (hx - dx * big, hy - dy * big), (hx + dx * big, hy + dy * big)
         pygame.draw.polygon(sub, GROUND, [a, b, (b[0] - ux * big, b[1] - uy * big), (a[0] - ux * big, a[1] - uy * big)])
-        pygame.draw.line(sub, WHITE, a, b, 2)
+        pygame.draw.aaline(sub, WHITE, a, b, 2)
         for pitch in (-20, -10, -5, 5, 10, 20):
             half = 26 if abs(pitch) >= 10 else 13
             off = (theta_deg - pitch) * px
             mx, my = R + off * sp, R + off * cp
-            pygame.draw.line(sub, WHITE, (mx - dx * half, my - dy * half), (mx + dx * half, my + dy * half), 2)
+            pygame.draw.aaline(sub, WHITE, (mx - dx * half, my - dy * half), (mx + dx * half, my + dy * half), 2)
         # Bank scale: fixed to the case; the pointer turns with the horizon.
         for a in (-60, -30, -20, -10, 0, 10, 20, 30, 60):
             r0 = R - 10
-            pygame.draw.line(sub, WHITE, polar(lc, r0, a), polar(lc, r0 - (16 if a in (0, -30, 30, -60, 60) else 9), a), 3)
+            pygame.draw.aaline(sub, WHITE, polar(lc, r0, a), polar(lc, r0 - (16 if a in (0, -30, 30, -60, 60) else 9), a), 3)
         tip = polar(lc, R - 28, -math.degrees(phi))
         left, right = polar(lc, R - 40, -math.degrees(phi) - 5), polar(lc, R - 40, -math.degrees(phi) + 5)
         pygame.draw.polygon(sub, ORANGE, [tip, left, right])
@@ -125,7 +127,7 @@ class Gauges:
         cx, cy = c
         pygame.draw.line(s, ORANGE, (cx - 48, cy), (cx - 16, cy), 4)
         pygame.draw.line(s, ORANGE, (cx + 16, cy), (cx + 48, cy), 4)
-        pygame.draw.lines(s, ORANGE, False, [(cx - 16, cy), (cx, cy + 9), (cx + 16, cy)], 4)
+        aa_lines(s, ORANGE, False, [(cx - 16, cy), (cx, cy + 9), (cx + 16, cy)], 4)
         pygame.draw.circle(s, ORANGE, (cx, cy), 3)
 
     # --- Altimeter -----------------------------------------------------------------------
@@ -144,7 +146,7 @@ class Gauges:
         self.text.blit(s, "29.92", 11, WHITE, window.center)
         # 10,000 ft pointer (thin, with a triangle), 1,000 ft hand (short, wide), 100 ft hand (long).
         a10k = (alt_ft % 100000) / 100000 * 360
-        pygame.draw.line(s, WHITE, c, polar(c, R - 14, a10k), 1)
+        pygame.draw.aaline(s, WHITE, c, polar(c, R - 14, a10k), 1)
         pygame.draw.polygon(s, WHITE, [polar(c, R - 12, a10k), polar(c, R - 24, a10k - 4), polar(c, R - 24, a10k + 4)])
         needle(s, c, R * 0.48, (alt_ft % 10000) / 10000 * 360, WHITE, 7, 8)
         needle(s, c, R - 18, (alt_ft % 1000) / 1000 * 360, WHITE, 3, 14)
@@ -158,7 +160,7 @@ class Gauges:
         self.text.blit(s, "2 MIN", 11, WHITE, (c[0], c[1] + R * 0.62))
         # Standard rate (3 deg/s) marks at 20 degrees either side of level.
         for a in (-90 - 20, -90, 90, 90 + 20):
-            pygame.draw.line(s, WHITE, polar(c, R - 12, a), polar(c, R - 26, a), 4)
+            pygame.draw.aaline(s, WHITE, polar(c, R - 12, a), polar(c, R - 26, a), 4)
         self.text.blit(s, "L", 14, WHITE, polar(c, R - 38, -90 - 20))
         self.text.blit(s, "R", 14, WHITE, polar(c, R - 38, 90 + 20))
         rot = max(-35.0, min(35.0, turn_rate_deg_s / 3.0 * 20.0))
@@ -168,9 +170,9 @@ class Gauges:
             a = math.radians(rot)
             return c[0] + x * math.cos(a) - y * math.sin(a), c[1] + x * math.sin(a) + y * math.cos(a)
 
-        pygame.draw.line(s, WHITE, p(-span, 0), p(span, 0), 5)
+        pygame.draw.aaline(s, WHITE, p(-span, 0), p(span, 0), 5)
         pygame.draw.circle(s, WHITE, (round(c[0]), round(c[1])), 8)
-        pygame.draw.line(s, WHITE, p(0, -8), p(0, -20), 4)
+        pygame.draw.aaline(s, WHITE, p(0, -8), p(0, -20), 4)
         # Inclinometer: the ball moves opposite to lateral specific force.
         tube = pygame.Rect(0, 0, R * 0.9, 16)
         tube.center = (c[0], c[1] + R * 0.36)
@@ -202,26 +204,23 @@ class Gauges:
 
     # --- Vertical speed ------------------------------------------------------------------
 
-    def vertical_speed(self, s, c, fpm: float, full_scale: int = 2000) -> None:
-        """2000 fpm full scale reads in hundreds (5, 10, 15, 20); 4000 in thousands (1 to 4)."""
+    @staticmethod
+    def vsi_angle(fpm: float) -> float:
+        return 270.0 + max(-2000.0, min(2000.0, fpm)) / 2000.0 * 160.0
+
+    def vertical_speed(self, s, c, fpm: float) -> None:
         R = self.R
-
-        def ang(v: float) -> float:
-            return 270.0 + max(-full_scale, min(full_scale, v)) / full_scale * 160.0
-
-        unit = 100 if full_scale <= 2000 else 1000
         self.face(s, c)
         self.text.blit(s, "VERTICAL SPEED", 10, GREY, (c[0] + 8, c[1] - R * 0.28))
-        self.text.blit(s, f"{unit} FT PER MIN", 10, GREY, (c[0] + 8, c[1] + R * 0.28))
+        self.text.blit(s, "100 FT PER MIN", 10, GREY, (c[0] + 8, c[1] + R * 0.28))
         self.text.blit(s, "UP", 11, WHITE, (c[0] - R * 0.25, c[1] - R * 0.52))
         self.text.blit(s, "DN", 11, WHITE, (c[0] - R * 0.25, c[1] + R * 0.52))
-        major, minor = full_scale // 4, full_scale // 20
-        self.ticks(s, c, range(-full_scale, full_scale + 1, major), ang, R - 10, 13, 3)
-        self.ticks(s, c, range(-full_scale + minor, full_scale, minor), ang, R - 10, 6, 1)
-        for v in range(0, full_scale + 1, major):
+        self.ticks(s, c, range(-2000, 2001, 500), self.vsi_angle, R - 10, 13, 3)
+        self.ticks(s, c, range(-1900, 2000, 100), self.vsi_angle, R - 10, 6, 1)
+        for v in (0, 5, 10, 15, 20):
             for sign in ((1, -1) if v else (1,)):
-                self.text.blit(s, f"{v / unit:g}", 15, WHITE, polar(c, R - 32, ang(sign * v)))
-        needle(s, c, R - 14, ang(fpm))
+                self.text.blit(s, str(v), 15, WHITE, polar(c, R - 32, self.vsi_angle(sign * v * 100)))
+        needle(s, c, R - 14, self.vsi_angle(fpm))
 
     # --- VOR / LOC indicator -------------------------------------------------------------
 
@@ -281,26 +280,8 @@ class Gauges:
         # No signal: the needle parks at the 3 o'clock position.
         a = 90.0 if relative_bearing is None else relative_bearing
         tip = polar(c, R - 20, a)
-        pygame.draw.line(s, YELLOW, polar(c, -(R - 30), a), tip, 4)
+        pygame.draw.aaline(s, YELLOW, polar(c, -(R - 30), a), tip, 4)
         pygame.draw.polygon(s, YELLOW, [tip, polar(c, R - 36, a - 5), polar(c, R - 36, a + 5)])
-
-    # --- Fan speed (N1) ------------------------------------------------------------------
-
-    @staticmethod
-    def n1_angle(pct: float) -> float:
-        return -125.0 + min(max(pct, 0.0), 110.0) / 110.0 * 250.0
-
-    def n1(self, s, c, pct: float, red_line: float) -> None:
-        R = self.R
-        self.face(s, c, "N1 % RPM")
-        ang = self.n1_angle
-        pygame.draw.line(s, RED, polar(c, R - 10, ang(red_line)), polar(c, R - 30, ang(red_line)), 4)
-        self.ticks(s, c, range(0, 111, 10), ang, R - 10, 12)
-        self.ticks(s, c, range(5, 110, 10), ang, R - 10, 5, 1)
-        for v in range(0, 111, 20):
-            self.text.blit(s, str(v), 14, WHITE, polar(c, R - 36, ang(v)))
-        self.text.blit(s, f"{pct:5.1f}", 14, AMBER if pct > red_line else GREEN, (c[0], c[1] + R * 0.62))
-        needle(s, c, R - 14, ang(pct))
 
     # --- Tachometer ----------------------------------------------------------------------
 
@@ -313,7 +294,7 @@ class Gauges:
         self.face(s, c, "RPM x100")
         ang = self.tach_angle
         arc(s, GREEN, c, R - 17, ang(2100), ang(2700), 8)
-        pygame.draw.line(s, RED, polar(c, R - 10, ang(2700)), polar(c, R - 30, ang(2700)), 4)
+        pygame.draw.aaline(s, RED, polar(c, R - 10, ang(2700)), polar(c, R - 30, ang(2700)), 4)
         self.ticks(s, c, range(0, 3501, 500), ang, R - 10, 12)
         self.ticks(s, c, range(100, 3500, 100), ang, R - 10, 5, 1)
         for v in range(0, 36, 5):

@@ -17,11 +17,11 @@ class A320Panel:
     size = (1240, 780)
     message_y = 596
     help = [
-        "M / N / L   ND mode / ND range / ILS scales on PFD",
+        "M / N / L / V   ND mode / ND range / ILS scales / flight path vector on PFD",
         "1 2 3 4     thrust lever to IDLE / CL / MCT / TOGA",
         "At the minimum you are still in cloud: TOGA, pitch up, gear up, flaps one step.",
     ]
-    key_actions = {pygame.K_m: "nd_mode", pygame.K_n: "nd_range", pygame.K_l: "ls"}
+    key_actions = {pygame.K_m: "nd_mode", pygame.K_n: "nd_range", pygame.K_l: "ls", pygame.K_v: "fpv"}
 
     def __init__(self, text: Text):
         self.pfd, self.nd, self.lower = PFD(text), ND(text), LowerPanel(text)
@@ -55,3 +55,5 @@ class A320Panel:
             c.nd_range = ND_RANGES[(ND_RANGES.index(c.nd_range) + 1) % len(ND_RANGES)]
         elif action == "ls":
             c.ls = not c.ls
+        elif action == "fpv":
+            c.fpv = not c.fpv

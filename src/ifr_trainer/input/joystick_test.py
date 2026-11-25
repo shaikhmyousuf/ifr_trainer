@@ -38,6 +38,9 @@ def run_joystick_test() -> None:
                 pygame.draw.rect(screen, (80, 80, 90), (160, y + 4, 200, 10), 1)
                 pygame.draw.rect(screen, (0, 220, 0), (260 + min(v, 0) * 100, y + 4, abs(v) * 100, 10))
                 y += 20
+            for h in range(js.get_numhats()):
+                screen.blit(font.render(f"hat {h}: {js.get_hat(h)}", True, (255, 255, 255)), (20, y))
+                y += 20
             pressed = [str(b) for b in range(js.get_numbuttons()) if js.get_button(b)]
             screen.blit(font.render(f"buttons pressed: {' '.join(pressed) or '-'}", True, (255, 255, 255)), (20, y))
             y += 30

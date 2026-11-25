@@ -17,3 +17,4 @@ class A320Cockpit(Cockpit):
     needle1: str = "VOR1"
     needle2: str = "ADF2"
     ls: bool = True  # ILS scales on the PFD
+    fpv: bool = False  # flight path vector (the bird) on the PFD

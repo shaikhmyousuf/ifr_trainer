@@ -1,7 +1,6 @@
-"""Round-dial panel shared by the light aircraft and business jet: the six-pack, NAV1 (VOR/LOC
-with glideslope), NAV2, ADF and an engine gauge, above a lower panel with throttle, flaps,
-trim, warning lights and the radio stack. Each aircraft subclasses ``SteamPanel`` for its
-engine gauge, airspeed limits and extra lights.
+"""Round-dial panel: the six-pack, NAV1 (VOR/LOC with glideslope), NAV2, ADF and an engine
+gauge, above a lower panel with throttle, flaps, trim, warning lights and the radio stack.
+An aircraft subclasses ``SteamPanel`` for its engine gauge (the Cessna 172: a tachometer).
 
 Mouse wheel (or click left/right half) on NAV1 / NAV2 turns its OBS, on the heading indicator
 moves the heading bug, and on a radio field tunes it.
@@ -33,7 +32,6 @@ STALL_WARNING_MARGIN_DEG = 2.0  # the stall horn sounds a few knots above the st
 
 class SteamPanel:
     size = (1240, 780)
-    vsi_full_scale_fpm = 2000
     message_y = 466
     help = [
         "[ / ]       pitch trim nose down / up (hold)",
@@ -101,7 +99,7 @@ class SteamPanel:
         nav = sim.nav_readings()
         st, c, g = sim.state, sim.cockpit, self.g
         hdg = sim.heading_deg
-        g.airspeed(screen, (COLS[0], ROWS[0]), sim.cas_kt, self.marks, self.vmax_kt(sim))
+        g.airspeed(screen, (COLS[0], ROWS[0]), sim.cas_kt, self.marks)
         g.attitude(screen, (COLS[1], ROWS[0]), math.degrees(st.theta), st.phi)
         g.altimeter(screen, (COLS[2], ROWS[0]), sim.alt_ft)
         self._nav1(screen, nav, c)
@@ -109,7 +107,7 @@ class SteamPanel:
         turn = (st.q * math.sin(st.phi) + st.r * math.cos(st.phi)) / math.cos(st.theta)
         g.turn_coordinator(screen, (COLS[0], ROWS[1]), math.degrees(turn + 0.25 * st.p), st.ny)
         g.heading_indicator(screen, (COLS[1], ROWS[1]), hdg, c.hdg_bug)
-        g.vertical_speed(screen, (COLS[2], ROWS[1]), sim.vs_fpm, self.vsi_full_scale_fpm)
+        g.vertical_speed(screen, (COLS[2], ROWS[1]), sim.vs_fpm)
         v2 = nav.vor2
         g.cdi(screen, (COLS[3], ROWS[1]), c.vor2_crs, "NAV 2",
               v2.deviation_dots * ND_TO_CDI_DOTS if v2 and v2.deviation_dots is not None else None,
@@ -120,14 +118,6 @@ class SteamPanel:
 
     def engine_gauge(self, s: pygame.Surface, centre: tuple[int, int], sim: Simulation) -> None:
         raise NotImplementedError
-
-    def vmax_kt(self, sim: Simulation) -> float | None:
-        """Moving limit speed for a barber pole on the airspeed indicator (None = fixed red line)."""
-        return None
-
-    def extra_lights(self, sim: Simulation) -> list[tuple[str, tuple[int, int, int], bool]]:
-        """Further annunciators below the minimum light: (label, colour when on, on)."""
-        return []
 
     def _nav1(self, s: pygame.Surface, nav: NavReadings, c) -> None:
         centre = (COLS[3], ROWS[0])
@@ -191,8 +181,6 @@ class SteamPanel:
         minimum = sim.cockpit.minimum_ft
         t.blit(s, "DA/MDA" if minimum else "", 11, GREY, (lx, y0 + 150))
         t.blit(s, f"{minimum:.0f} FT" if minimum else "", 14, CYAN, (lx, y0 + 168))
-        for i, (label, colour, on) in enumerate(self.extra_lights(sim)):
-            self._light(s, (lx, y0 + 210 + 44 * i), label, colour, on)
         # Radio stack.
         pygame.draw.line(s, GREY, (x0 + 560, y0 + 12), (x0 + 560, LOWER.bottom - 12), 1)
         t.blit(s, "RADIOS", 13, GREY, (x0 + 590, y0 + 14), "midleft")

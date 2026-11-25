@@ -11,7 +11,8 @@ import pygame
 
 from .aircraft import AIRCRAFT, DEFAULT_AIRCRAFT, load_aircraft
 from .displays.common import AMBER, BLACK, GREEN, RED, WHITE, Text
-from .input.controls import Controls, JoystickMapping
+from .input.controls import Controls, JoystickMapping, controls_file
+from .input.controls_setup import run_controls_setup
 from .input.joystick_test import run_joystick_test
 from .sim.aircraft import Aircraft
 from .sim.airport import Airport
@@ -119,10 +120,14 @@ def main() -> None:
     parser.add_argument("--scenario", default=DEFAULT_SCENARIO, help=f"start scenario (default: {DEFAULT_SCENARIO})")
     parser.add_argument("--list-aircraft", action="store_true", help="list aircraft types and exit")
     parser.add_argument("--list-scenarios", action="store_true", help="list the aircraft's scenarios and exit")
-    parser.add_argument("--controls", type=Path, help="path to a controls.toml with your joystick mapping")
+    parser.add_argument("--controls", type=Path, help="joystick mapping to use instead of your own (from --setup-controls)")
+    parser.add_argument("--setup-controls", action="store_true", help="set up your joystick by moving each control")
     parser.add_argument("--joystick-test", action="store_true", help="show live joystick axes and buttons")
     args = parser.parse_args()
 
+    if args.setup_controls:
+        run_controls_setup(args.controls)
+        return
     if args.joystick_test:
         run_joystick_test()
         return
@@ -138,4 +143,5 @@ def main() -> None:
     elif args.scenario not in scenarios:
         raise SystemExit(f"unknown scenario {args.scenario!r} for {aircraft.id}; try --list-scenarios")
     else:
+        print(f"Joystick mapping: {controls_file(args.controls) or 'bundled default (run --setup-controls)'}")
         run(aircraft, scenarios[args.scenario], args.controls)

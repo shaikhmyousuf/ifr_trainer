@@ -53,18 +53,19 @@ class LowerPanel:
             f.append(Field(label, pygame.Rect(x, y, w, h), show, change))
 
         xa, xb = 975, 1135
-        efis("ND", xa, 28, 100, lambda c: c.nd_mode,
+        efis("ND", xa, 26, 100, lambda c: c.nd_mode,
              lambda c, d, big: setattr(c, "nd_mode", cycle(ND_MODES, c.nd_mode, d)))
-        efis("RNG", xa, 54, 100, lambda c: f"{c.nd_range} NM",
+        efis("RNG", xa, 50, 100, lambda c: f"{c.nd_range} NM",
              lambda c, d, big: setattr(c, "nd_range", ND_RANGES[min(max(ND_RANGES.index(c.nd_range) + d, 0), len(ND_RANGES) - 1)]))
-        efis("NDL1", xa, 80, 100, lambda c: c.needle1,
+        efis("NDL1", xa, 74, 100, lambda c: c.needle1,
              lambda c, d, big: setattr(c, "needle1", cycle(NEEDLE1, c.needle1, d)))
-        efis("NDL2", xa, 106, 100, lambda c: c.needle2,
+        efis("NDL2", xa, 98, 100, lambda c: c.needle2,
              lambda c, d, big: setattr(c, "needle2", cycle(NEEDLE2, c.needle2, d)))
-        efis("LS", xb, 28, 76, lambda c: "ON" if c.ls else "OFF", lambda c, d, big: setattr(c, "ls", not c.ls))
-        efis("HDG", xb, 54, 76, lambda c: f"{c.hdg_bug % 360:03.0f}", course_field("hdg_bug"))
-        efis("ALT", xb, 80, 76, lambda c: f"{c.alt_target_ft:.0f}", change_altitude)
-        efis("MIN", xb, 106, 76, lambda c: "----" if c.minimum_ft is None else f"{c.minimum_ft:.0f}", change_minimum)
+        efis("LS", xb, 26, 76, lambda c: "ON" if c.ls else "OFF", lambda c, d, big: setattr(c, "ls", not c.ls))
+        efis("FPV", xb, 50, 76, lambda c: "ON" if c.fpv else "OFF", lambda c, d, big: setattr(c, "fpv", not c.fpv))
+        efis("HDG", xb, 74, 76, lambda c: f"{c.hdg_bug % 360:03.0f}", course_field("hdg_bug"))
+        efis("ALT", xb, 98, 76, lambda c: f"{c.alt_target_ft:.0f}", change_altitude)
+        efis("MIN", xb, 122, 76, lambda c: "----" if c.minimum_ft is None else f"{c.minimum_ft:.0f}", change_minimum)
         return f
 
     # --- Input -------------------------------------------------------------------------
@@ -99,7 +100,7 @@ class LowerPanel:
         self._radio_idents(s, sim, nav)
         self.text.blit(s, "NAV RADIOS", 13, GREY, (560, 12), "midleft")
         self.text.blit(s, "EFIS / FCU", 13, GREY, (930, 12), "midleft")
-        self.text.blit(s, "wheel: tune  shift: coarse  click: -/+", 11, GREY, (930, 140), "midleft")
+        self.text.blit(s, "wheel: tune  shift: coarse  click: -/+", 11, GREY, (560, 140), "midleft")
         hovered = self.field_at(hover) if hover else None
         for f in self.fields:
             self.text.blit(s, f.label, 13, WHITE, (f.rect.x - 6, f.rect.centery), "midright")

@@ -18,5 +18,6 @@ gear = 6
 speedbrake = 7
 pause = -1
 reset = -1
+# A hat direction works too, e.g. trim_nose_up = "hat0_down" (hat0_up / _down / _left / _right).
 trim_nose_up = -1       # held; manual pitch trim (aircraft without auto-trim, e.g. C172)
 trim_nose_down = -1

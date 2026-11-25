@@ -59,6 +59,8 @@ def test_panel_draws_every_scenario(each_aircraft, monkeypatch):
     airport = Airport.load()
     for name, sc in load_scenarios(each_aircraft).items():
         sim = Simulation(each_aircraft, airport, sc)
+        if hasattr(sim.cockpit, "fpv"):
+            sim.cockpit.fpv = True  # glass cockpits: draw the flight path vector too
         fly(sim, 0.5)
         panel.draw(screen, sim, throttle_needs_sync=True)
         assert not panel.click(sim, (-100, -100), False), name  # outside the window: not a panel field

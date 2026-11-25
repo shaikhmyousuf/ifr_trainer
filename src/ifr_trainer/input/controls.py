@@ -1,5 +1,6 @@
 """Joystick and keyboard input, turned into PilotInputs."""
 
+import os
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 
@@ -12,6 +13,19 @@ THROTTLE_PICKUP = 0.05  # axis travel needed before a hardware throttle takes ov
 DETENT_SNAP = 0.015
 MOUSE_STICK_RANGE_PX = 150.0  # drag distance for full stick deflection
 MOUSE_WHEEL_LEVER_STEP = 0.02
+# Hat (POV switch) directions, usable wherever a button number is: "hat0_up", "hat1_left"...
+HAT_DIRECTIONS = {"up": (1, 1), "down": (1, -1), "right": (0, 1), "left": (0, -1)}  # (x or y, sign)
+
+Control = int | str  # a button number (-1 = not assigned) or a hat direction
+
+
+def hat_directions(hat: int, value: tuple[int, int]) -> set[str]:
+    """The directions held on ``hat``, as control names; a diagonal holds two."""
+    return {f"hat{hat}_{d}" for d, (i, sign) in HAT_DIRECTIONS.items() if value[i] == sign}
+
+
+def describe_control(control: Control) -> str:
+    return control if isinstance(control, str) else f"button {control}"
 
 
 @dataclass(frozen=True)
@@ -25,13 +39,52 @@ class JoystickMapping:
     throttle_invert: bool = True
     deadzone: float = 0.05
     expo: float = 0.3
-    buttons: dict[str, int] = field(default_factory=dict)
+    buttons: dict[str, Control] = field(default_factory=dict)
 
     @classmethod
     def load(cls, path: Path | None = None) -> "JoystickMapping":
-        d = load_toml("data/controls.toml", path)["joystick"]
+        """The bundled default, with the settings in ``controls_file(path)`` (if any) on top."""
+        d = load_toml("data/controls.toml")["joystick"]
+        path = controls_file(path)
+        if path is not None:
+            own = load_toml("", path).get("joystick", {})
+            d = {**d, **own, "buttons": {**d.get("buttons", {}), **own.get("buttons", {})}}
         known = {f.name for f in fields(cls)}
         return cls(**{k: v for k, v in d.items() if k in known})
+
+    def to_toml(self) -> str:
+        lines = [
+            "# Joystick mapping written by `ifr-trainer --setup-controls`. Run it again to redo it, or edit",
+            "# this file (`ifr-trainer --joystick-test` shows axis and button numbers). Settings left out",
+            "# come from the bundled default, src/ifr_trainer/data/controls.toml.",
+            "[joystick]",
+        ]
+        for f in fields(self):
+            v = getattr(self, f.name)
+            if f.name != "buttons":
+                lines.append(f"{f.name} = {str(v).lower() if isinstance(v, bool) else v}")
+        lines += ["", "[joystick.buttons]  # -1 = not assigned"]
+        lines += [f'{action} = "{c}"' if isinstance(c, str) else f"{action} = {c}" for action, c in self.buttons.items()]
+        return "\n".join(lines) + "\n"
+
+    def save(self, path: Path) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(self.to_toml())
+
+
+def user_controls_path() -> Path:
+    """Each person's own mapping, written by --setup-controls."""
+    config = os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config"
+    return Path(config) / "ifr-trainer" / "controls.toml"
+
+
+def controls_file(path: Path | None = None) -> Path | None:
+    """The mapping file in use: ``path`` if given, else the user's own file if it exists, else
+    None (the bundled default alone)."""
+    if path is not None:
+        return path
+    own = user_controls_path()
+    return own if own.exists() else None
 
 
 def shape_axis(value: float, deadzone: float, expo: float) -> float:
@@ -67,6 +120,7 @@ class Controls:
         self._key_pitch = 0.0
         self._key_roll = 0.0
         self._mouse_anchor: tuple[int, int] | None = None
+        self._hats: dict[int, tuple[int, int]] = {}  # last hat values, to act on newly pressed directions
         self.open_joystick()
 
     def open_joystick(self) -> None:
@@ -106,6 +160,12 @@ class Controls:
         elif event.type == pygame.JOYBUTTONDOWN:
             for action, button in self.mapping.buttons.items():
                 if button == event.button:
+                    return self._action(action)
+        elif event.type == pygame.JOYHATMOTION:
+            pressed = hat_directions(event.hat, event.value) - hat_directions(event.hat, self._hats.get(event.hat, (0, 0)))
+            self._hats[event.hat] = event.value
+            for action, control in self.mapping.buttons.items():
+                if control in pressed:
                     return self._action(action)
         elif event.type == pygame.KEYDOWN:
             key, mods = event.key, event.mod
@@ -152,6 +212,9 @@ class Controls:
 
     def _button(self, action: str) -> int:
         index = self.mapping.buttons.get(action, -1)
+        if self.joystick is not None and isinstance(index, str):
+            js = self.joystick
+            return int(any(index in hat_directions(h, js.get_hat(h)) for h in range(js.get_numhats())))
         if self.joystick is None or not 0 <= index < self.joystick.get_numbuttons():
             return 0
         return int(self.joystick.get_button(index))

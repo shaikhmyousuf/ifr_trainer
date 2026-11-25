@@ -45,15 +45,16 @@ src/ifr_trainer/
 │                  fly-by-wire), simulation (orchestrator, monitoring),
 │                  aircraft.py: the interface every aircraft module implements
 ├── nav/           navaids and VOR / DME / ILS / ADF receivers
-├── input/         joystick, mouse and keyboard, joystick test tool
+├── input/         joystick, mouse and keyboard, joystick setup and test tools
 ├── displays/      shared drawing helpers, the panel interface, round-dial gauges and
-│                  the round-dial panel (SteamPanel) used by the C172 and the jet
+│                  the round-dial panel (SteamPanel) used by the C172
 └── aircraft/      aircraft modules, listed in aircraft/__init__.py
     └── a320/      aircraft.toml, scenarios.toml, A320 class, fly-by-wire (fbw/),
                    speeds (VLS, green dot), cockpit (EFIS settings),
                    displays (PFD, ND, lower panel, layout)
     ├── c172/      aircraft.toml, scenarios.toml, piston engine and propeller, panel
-    └── citation/  aircraft.toml, scenarios.toml, panel (N1, barber pole, gear lights)
+    └── citation/  aircraft.toml, scenarios.toml, speeds, cockpit, displays (PFD, ND and
+                   lower panel: a copy of the A320's, adapted)
 ```
 
 **The aircraft interface** (`sim/aircraft.py`). The simulation asks an aircraft for:
@@ -63,9 +64,9 @@ src/ifr_trainer/
 | Airframe data (`aircraft.toml`, shared format) | approximate A320-200 | JSBSim `c172p` | TU Delft Citation II |
 | Engines (`Propulsion`) | `Turbofan` (shared) | piston engine, fixed-pitch propeller (JSBSim `prop_75in2f`), RPM as a state | `Turbofan` (shared) |
 | Flight controls (`FlightControls`) | normal law by dynamic inversion | `DirectControls` (shared): stick moves the surfaces, manual trim, automatic rudder | `DirectControls`, with stick expo |
-| Cockpit state | radios + EFIS settings | `Nav1Cockpit` (shared): NAV1 tunes VOR or ILS | `Nav1Cockpit` |
-| Panel (displays) | PFD, ND, lower panel | `SteamPanel` + tachometer | `SteamPanel` + N1, barber pole, gear and speedbrake lights |
-| Scenario settings (`scenarios.toml`) | speeds, CONF, ND modes | speeds, flaps, NAV1 on the localizer | speeds, flaps, gear, NAV1 on the localizer |
+| Cockpit state | radios + EFIS settings | `Nav1Cockpit` (shared): NAV1 tunes VOR or ILS | radios + EFIS settings (copy of the A320's) |
+| Panel (displays) | PFD, ND, lower panel | `SteamPanel` + tachometer | PFD, ND, lower panel (copy of the A320's, adapted) |
+| Scenario settings (`scenarios.toml`) | speeds, CONF, ND modes | speeds, flaps, NAV1 on the localizer | speeds, flaps, gear, ND modes |
 
 Scenarios are split the same way: `data/scenarios.toml` holds the exercise (position,
 altitude, wind, radios, minimum); each aircraft adds how it flies it. The A320's
